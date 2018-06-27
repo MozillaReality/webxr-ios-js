@@ -1,0 +1,16 @@
+<html>
+	<head>
+		<meta charset="utf-8">
+		<script module src="../dist/webxr.js"></script>
+	</head>
+	<body>
+		<h1>Test</h1>
+		<script module>
+			navigator.xr.requestDevice().then(device => {
+				console.log('XRDevice', device)
+			}).catch(err => {
+				console.error('err', device)
+			})
+		</script>
+	</body>
+</html>

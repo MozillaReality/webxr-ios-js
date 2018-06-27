@@ -32,10 +32,10 @@ export default class ARKitWrapper extends EventHandlerBase {
 	constructor(){
 		super()
 		if(ARKitWrapper.HasARKit() === false){
-			throw 'ARKitWrapper will only work in Mozilla\'s ARDemo test app'
+			throw new Error('ARKitWrapper will only work in Mozilla\'s ARDemo test app')
 		}
 		if(typeof ARKitWrapper.GLOBAL_INSTANCE !== 'undefined'){
-			throw 'ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the global instance.'
+			throw new Error('ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the global instance.')
 		}
 
 		this._deviceId = null
