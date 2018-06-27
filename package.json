@@ -1,0 +1,29 @@
+{
+  "name": "webxr-ios-ud",
+  "version": "0.0.1",
+  "description": "The JS for WebXR inside Mozilla WebXR Viewer",
+  "main": "src/XRPolyfill.js",
+  "directories": {},
+  "scripts": {
+    "start": "npm run build && http-server .",
+    "build": "webpack"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mozilla-mobile/webxr-ios-js.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mozilla-mobile/webxr-ios-js/issues"
+  },
+  "homepage": "https://github.com/mozilla-mobile/webxr-ios-js#readme",
+  "devDependencies": {
+    "babel-core": "^6.26.0",
+    "babel-loader": "^7.1.1",
+    "babel-preset-env": "^1.6.0",
+    "http-server": "^0.10.0",
+    "webpack": "^3.5.5"
+  }
+}
