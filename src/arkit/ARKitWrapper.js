@@ -1,15 +1,14 @@
-import EventHandlerBase from '../event/EventHandlerBase.js'
+import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
+import * as quat from "gl-matrix/src/gl-matrix/quat";
+import * as vec3 from "gl-matrix/src/gl-matrix/vec3";
+import * as glMatrix from "gl-matrix/src/gl-matrix/common";
 
-import base64 from "../math/base64-binary.js";
-import Quaternion from '../math/Quaternion.js';
-import MatrixMath from '../math/MatrixMath.js';
-import * as mat4 from "../math/gl-matrix/mat4.js";
-import * as quat from "../math/gl-matrix/quat.js";
-import * as vec3 from "../math/gl-matrix/vec3.js";
-import * as glMatrix from "../math/gl-matrix/common.js";
+import EventTarget from 'webxr-polyfill/src/lib/EventTarget';
+
+import base64 from "../lib/base64-binary.js";
 
 /*	
-ARKitWrapper talks	 to Apple ARKit, as exposed by Mozilla's test ARDemo app.
+ARKitWrapper talks to Apple ARKit, as exposed by Mozilla's test ARDemo app.
 It won't function inside a browser like Firefox.
 
 ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the instance, then add event listeners like so:
@@ -28,7 +27,9 @@ ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the instance,
 
 */
 
-export default class ARKitWrapper extends EventHandlerBase {
+const PI_OVER_180 = Math.PI / 180.0
+
+export default class ARKitWrapper extends EventTarget {
 	constructor(){
 		super()
 		if(ARKitWrapper.HasARKit() === false){
@@ -85,9 +86,9 @@ export default class ARKitWrapper extends EventHandlerBase {
 			light_intensity: true,
 			computer_vision_data: false
 		}
-		this._m90 = mat4.fromZRotation(mat4.create(), 90*MatrixMath.PI_OVER_180);
-		this._m90neg = mat4.fromZRotation(mat4.create(), -90*MatrixMath.PI_OVER_180);
-		this._m180 = mat4.fromZRotation(mat4.create(), 180*MatrixMath.PI_OVER_180);
+		this._m90 = mat4.fromZRotation(mat4.create(), 90*PI_OVER_180);
+		this._m90neg = mat4.fromZRotation(mat4.create(), -90*PI_OVER_180);
+		this._m180 = mat4.fromZRotation(mat4.create(), 180*PI_OVER_180);
 		this._mTemp = mat4.create();
 
 		// temp storage for CV arraybuffers

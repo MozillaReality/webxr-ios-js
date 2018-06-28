@@ -3,7 +3,7 @@ import ARKitDevice from './arkit/ARKitDevice.js'
 
 // Monkey patch the polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
-    this.xr = new XR(new ARKitDevice(this.global))
+    this.xr = new XR(new XRDevice(new ARKitDevice(this.global)))
     Object.defineProperty(this.global.navigator, 'xr', {
       value: this.xr,
       configurable: true,
