@@ -1,39 +1,113 @@
 <html>
 	<head>
 		<meta charset="utf-8">
+		<script src="./libs/three/three.min.js"></script>
 		<script module src="../dist/webxr.js"></script>
 		<style>
 			button {
 				font-size: 16px;
+			}
+			html, 
+			body, 
+			.arkit-device-wrapper, 
+			.arkit-device-wrapper canvas {
+				width: 100%;
+				height: 100%;
+				padding: 0;
+				margin: 0;
+			}
+			body {
+				z-index: 1;
+			}
+			.arkit-device-wrapper {
+				z-index: -1;
+				position: absolute;
+				top: 0;
+				left: 0;
+				bottom: 0;
+				right: 0;
 			}
 		</style>
 	</head>
 	<body>
 		<h1>Test</h1>
 		<button type=button id=go-button>Go</button>
-		<script module>
+		<script type=module>
+			import XREngine from "./XREngine.js"
+
 			var device = null
 			var session = null
+			var layer = null
+			var frameOfReference = null
+			var engine = null
 
 			navigator.xr.requestDevice().then(dev => {
 				device = dev
 			}).catch(err => {
-				console.error('err', device)
+				console.error('Could not find XR device', err)
 			})
 
 			function handleStartSessionRequest(ev){
 				if(device === null){
-					console.error('No device')
+					console.error('No xr device')
 					return
 				}
-				device.requestSession({ exclusive: true }).then((sess) => {
-					console.log('Session', sess)
-					session = sess
-				}).catch(err => {
-					console.error('Error', err)
-				})
+				device.requestSession({ exclusive: true })
+					.then(handleSessionStarted)
+					.catch(err => {
+						console.error('Error', err)
+					})
 			}
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
+
+			function handleSessionStarted(xrSession){
+				session = xrSession
+
+				// Set up the base layer
+				const canvas = document.createElement('canvas')
+				const glContext = canvas.getContext('webgl', {
+					compatibleXRDevice: device
+				})
+				if(!glContext) throw new Error('Could not create a webgl context')
+				session.baseLayer = new XRWebGLLayer(session, glContext)
+
+				engine = new XREngine(canvas, glContext)
+				engine.addAmbientLight()
+				engine.addBox([0, 0, -1])
+
+				session.requestFrameOfReference('eyeLevel')
+					.then(handleFrameOfReference)
+					.catch(err => {
+						console.error('Error finding frame of reference', err)
+					})
+			}
+
+			function handleFrameOfReference(xrFrameOfReference){
+				frameOfReference = xrFrameOfReference
+				session.requestAnimationFrame(handleAnimationFrame)
+			}
+
+			function handleAnimationFrame(t, frame){
+				if(session.ended) return
+				session.requestAnimationFrame(handleAnimationFrame)
+
+				let pose = frame.getDevicePose(frameOfReference)
+				if(!pose){
+					console.log('No pose')
+					return
+				}
+
+				engine.renderer.clear()
+				for (let view of frame.views) {
+					engine.render(
+						session.baseLayer.getViewport(view),
+						view.projectionMatrix,
+						pose.getViewMatrix(view)
+					)
+					break
+				}
+			}
+
 		</script>
 	</body>
 </html>

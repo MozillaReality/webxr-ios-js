@@ -113,7 +113,6 @@ export default class ARKitWrapper extends EventTarget {
 		for(let i=0; i < eventCallbacks.length; i++){
 			window[eventCallbacks[i][0]] = (detail) => {
 				detail = detail || null
-				console.log('detail', detail)
 				try {
 					this.dispatchEvent(
 						eventCallbacks[i][1],
@@ -145,7 +144,7 @@ export default class ARKitWrapper extends EventTarget {
 				this._timeOffset += this._timeOffsets[i];
 			}
 			this._timeOffset = this._timeOffset / this._timeOffsets.length;
-			console.log("Native time: " + detail.nativeTime + ", new timeOffset: " + this._timeOffset)
+			//console.log("Native time: " + detail.nativeTime + ", new timeOffset: " + this._timeOffset)
 		}
 			
 		this._adjustARKitTime = function(time) {

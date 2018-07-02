@@ -10,7 +10,6 @@ export default class ARKitWatcher {
 	subscribe(){
 		if(this._subscribed) return
 		this._subscribed = true
-		console.log('wrapp', ARKitWrapper.WATCH_EVENT)
 		this._arKitWrapper.addEventListener(ARKitWrapper.INIT_EVENT, this.handleARKitInit.bind(this))
 		this._arKitWrapper.addEventListener(ARKitWrapper.WATCH_EVENT, this.handleARKitUpdate.bind(this))
 		this._arKitWrapper.addEventListener(ARKitWrapper.WINDOW_RESIZE_EVENT, this.handleARKitWindowResize.bind(this))
@@ -21,9 +20,7 @@ export default class ARKitWatcher {
 
 	// Ancestor classes can override these functions to handle events
 	handleARKitInit(){}
-	handleARKitUpdate(){
-		console.log('updatlio')
-	}
+	handleARKitUpdate(){}
 	handleARKitWindowResize(){}
 	handleOnError(){}
 	handleArTrackingChanged(){}

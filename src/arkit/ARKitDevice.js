@@ -2,7 +2,7 @@ import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 
 import PolyfilledXRDevice from 'webxr-polyfill/src/devices/PolyfilledXRDevice'
 
-import {throttledConsoleLog} from '../lib/throttle.js'
+import {throttle, throttledConsoleLog} from '../lib/throttle.js'
 
 import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
@@ -10,15 +10,23 @@ import ARKitWatcher from './ARKitWatcher.js'
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
 		super(global)
+		this._throttledLogPose = throttle(this.logPose, 1000)
 
 		this._sessions = new Map()
 		this._exclusiveSession = null
-		this._gamepadInputSources = {}
+
+		// A div prepended to body children that will contain the session layer
+		this._wrapperDiv = document.createElement('div')
+		this._wrapperDiv.setAttribute('class', 'arkit-device-wrapper')
+		document.addEventListener('DOMContentLoaded', ev => {
+			document.body.insertBefore(this._wrapperDiv, document.body.firstChild || null)
+		})
 
 		this._basePoseMatrix = mat4.create() // Model and view matrix are the same
 		this._projectionMatrix = mat4.create()
 
-		this._fovy = 70
+		this._eyeLevelMatrix = mat4.create()
+
 		this._depthNear = 0.1
 		this._depthFar = 1000
 
@@ -30,21 +38,13 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			this._arKitWrapper = null
 			this._arWatcher = null
 		}
-
 	}
 
 	get depthNear(){ return this._depthNear }
-
 	set depthNear(val){ this._depthNear = val }
 
 	get depthFar(){ return this._depthFar }
-
 	set depthFar(val){ this._depthFar = val }
-
-	onBaseLayerSet(sessionId, layer){
-		const session = this._sessions.get(sessionId)
-        session.baseLayer = layer
-	}
 
 	supportsSession(options={}){
 		return options.exclusive === true
@@ -69,26 +69,42 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		return Promise.resolve(session.id)
 	}
 
+	onBaseLayerSet(sessionId, layer){
+		this._sessions.get(sessionId).baseLayer = layer // XRWebGLLayer
+		this._wrapperDiv.appendChild(layer.context.canvas)
+	}
+
 	requestAnimationFrame(callback){
-		window.requestAnimationFrame(callback)
+		return window.requestAnimationFrame(callback)
 	}
 
 	cancelAnimationFrame(handle){
-		window.cancelAnimationFrame(handle)
+		return window.cancelAnimationFrame(handle)
 	}
 
 	onFrameStart(sessionId){
 		// TODO
+		//this._throttledLogPose()
 	}
 
 	onFrameEnd(sessionId){
 		// TODO
 	}
 
-	requestStageBounds(){ return null }
+	logPose(){
+		console.log('pose', 
+			mat4.getTranslation(new Float32Array(3), this._basePoseMatrix),
+			mat4.getRotation(new Float32Array(4), this._basePoseMatrix)
+		)
+	}
 
 	async requestFrameOfReferenceTransform(type, options){
-		// TODO
+		switch(type){
+			case 'eyeLevel':
+				return this._eyeLevelMatrix
+			default:
+				throw new Error('Unsupported frame of reference type', type)
+		}
 	}
 
 	endSession(sessionId){
@@ -98,6 +114,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		if(this._exclusiveSession === session){
 			this._exclusiveSession = null
 			this._arKitWrapper.stop()
+		}
+		if(session.baseLayer !== null){
+			this._wrapperDiv.removeChild(session.baseLayer.context.canvas)
 		}
 	}
 
@@ -131,21 +150,27 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		mat4.copy(this._basePoseMatrix, matrix)
 	}
 
-	getInputSources(){ throw new Error('Not implemented'); }
-
-	getInputPose(inputSource, coordinateSystem){ throw new Error('Not implemented'); }
-
-	onWindowResize(){
-		console.log('resize')
+	requestStageBounds(){
+		return null
 	}
+
+	getInputSources(){
+		return []
+	}
+
+	getInputPose(inputSource, coordinateSystem){
+		return null
+	}
+
+	onWindowResize(){}
 }
 
 let SESSION_ID = 100
 class Session {
 	constructor(outputContext){
-		this.outputContext = outputContext
-		this.ended = null
-		this.baseLayer = null
+		this.ended = null // boolean
+		this.outputContext = outputContext // XRPresentationContext
+		this.baseLayer = null // XRWebGLLayer
 		this.id = ++SESSION_ID
 	}
 }
