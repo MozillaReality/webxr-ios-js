@@ -2,15 +2,38 @@
 	<head>
 		<meta charset="utf-8">
 		<script module src="../dist/webxr.js"></script>
+		<style>
+			button {
+				font-size: 16px;
+			}
+		</style>
 	</head>
 	<body>
 		<h1>Test</h1>
+		<button type=button id=go-button>Go</button>
 		<script module>
-			navigator.xr.requestDevice().then(device => {
-				console.log('XRDevice', device)
+			var device = null
+			var session = null
+
+			navigator.xr.requestDevice().then(dev => {
+				device = dev
 			}).catch(err => {
 				console.error('err', device)
 			})
+
+			function handleStartSessionRequest(ev){
+				if(device === null){
+					console.error('No device')
+					return
+				}
+				device.requestSession({ exclusive: true }).then((sess) => {
+					console.log('Session', sess)
+					session = sess
+				}).catch(err => {
+					console.error('Error', err)
+				})
+			}
+			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
 		</script>
 	</body>
 </html>

@@ -2,17 +2,10 @@ import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 
 import PolyfilledXRDevice from 'webxr-polyfill/src/devices/PolyfilledXRDevice'
 
-import ARKitWrapper from './ARKitWrapper.js'
+import {throttledConsoleLog} from '../lib/throttle.js'
 
-let SESSION_ID = 100
-class Session {
-	constructor(outputContext){
-		this.outputContext = outputContext
-		this.ended = null
-		this.baseLayer = null
-		this.id = ++SESSION_ID
-	}
-}
+import ARKitWrapper from './ARKitWrapper.js'
+import ARKitWatcher from './ARKitWatcher.js'
 
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
@@ -20,9 +13,10 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 		this._sessions = new Map()
 		this._exclusiveSession = null
-		this._baseModelMatrix = mat4.create()
 		this._gamepadInputSources = {}
-		this._tempVec3 = new Float32Array(3)
+
+		this._basePoseMatrix = mat4.create() // Model and view matrix are the same
+		this._projectionMatrix = mat4.create()
 
 		this._fovy = 70
 		this._depthNear = 0.1
@@ -30,9 +24,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 		try{
 			this._arKitWrapper = ARKitWrapper.GetOrCreate()
+			this._arWatcher = new ARWatcher(this._arKitWrapper, this)
 		} catch (e){
 			console.error('Error initializing the ARKit wrapper', e)
 			this._arKitWrapper = null
+			this._arWatcher = null
 		}
 
 	}
@@ -46,7 +42,7 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	set depthFar(val){ this._depthFar = val }
 
 	onBaseLayerSet(sessionId, layer){
-		const session = this.sessions.get(sessionId)
+		const session = this._sessions.get(sessionId)
         session.baseLayer = layer
 	}
 
@@ -65,11 +61,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 
 		const session = new Session(options.outputContext || null)
-		this.sessions.set(session.id, session)
+		this._sessions.set(session.id, session)
 		this.exclusiveSession = session
-
-		// TODO start ARKit
-
+		this._arKitWrapper.waitForInit().then(() => {
+			this._arKitWrapper.watch()
+		})
 		return Promise.resolve(session.id)
 	}
 
@@ -96,14 +92,13 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	}
 
 	endSession(sessionId){
-		const session = this.sessions.get(sessionId);
+		const session = this._sessions.get(sessionId);
 		if (session.ended) return
 		session.ended = true
 		if(this._exclusiveSession === session){
 			this._exclusiveSession = null
+			this._arKitWrapper.stop()
 		}
-
-		// TODO shut down ARKit
 	}
 
 	getViewport(sessionId, eye, layer, target){
@@ -116,11 +111,25 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		return true
 	}
 
-	getProjectionMatrix(eye){ throw new Error('Not implemented'); }
+	getProjectionMatrix(eye){
+		return this._projectionMatrix
+	}
 
-	getBasePoseMatrix(){ throw new Error('Not implemented'); }
+	setProjectionMatrix(matrix){
+		mat4.copy(this._projectionMatrix, matrix)
+	}
 
-	getBaseViewMatrix(eye){ throw new Error('Not implemented'); }
+	// The model and view matrices are the same
+	getBasePoseMatrix(){
+		return this._basePoseMatrix
+	}
+	getBaseViewMatrix(eye){
+		return this._basePoseMatrix
+	}
+
+	setBaseViewMatrix(matrix){
+		mat4.copy(this._basePoseMatrix, matrix)
+	}
 
 	getInputSources(){ throw new Error('Not implemented'); }
 
@@ -130,3 +139,39 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		console.log('resize')
 	}
 }
+
+let SESSION_ID = 100
+class Session {
+	constructor(outputContext){
+		this.outputContext = outputContext
+		this.ended = null
+		this.baseLayer = null
+		this.id = ++SESSION_ID
+	}
+}
+
+class ARWatcher extends ARKitWatcher {
+	constructor(arKitWrapper, arKitDevice){
+		super(arKitWrapper)
+		this._arKitDevice = arKitDevice
+	}
+	handleARKitUpdate(event){
+		const cameraTransformMatrix = this._arKitWrapper.getData('camera_transform')
+		if (cameraTransformMatrix) {
+			this._arKitDevice.setBaseViewMatrix(cameraTransformMatrix)
+		} else {
+			console.log('no camera transform', this._arKitWrapper.rawARData)
+		}
+
+		const cameraProjectionMatrix = this._arKitWrapper.getData('projection_camera')
+		if(cameraProjectionMatrix){
+			this._arKitDevice.setProjectionMatrix(cameraProjectionMatrix)
+		} else {
+			console.log('no projection camera', this._arKitWrapper.rawARData)
+		}
+	}
+	handleOnError(...args){
+		console.error('ARKit error', ...args)
+	}
+}
+

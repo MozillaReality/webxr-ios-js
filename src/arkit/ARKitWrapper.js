@@ -113,8 +113,10 @@ export default class ARKitWrapper extends EventTarget {
 		for(let i=0; i < eventCallbacks.length; i++){
 			window[eventCallbacks[i][0]] = (detail) => {
 				detail = detail || null
+				console.log('detail', detail)
 				try {
 					this.dispatchEvent(
+						eventCallbacks[i][1],
 						new CustomEvent(
 							eventCallbacks[i][1],
 							{
@@ -708,11 +710,7 @@ export default class ARKitWrapper extends EventTarget {
 		}
 		this._isWatching = true
 
-		var newO = Object.assign({}, this._defaultOptions);
-
-		if(options != null) {
-			newO = Object.assign(newO, options)
-		}
+		const newO = Object.assign({}, this._defaultOptions, options);
 
 		// option to WebXRView is different than the WebXR option
 		if (newO.videoFrames) {
@@ -787,9 +785,12 @@ export default class ARKitWrapper extends EventTarget {
 		this._deviceId = deviceId
 		this._isInitialized = true
 		try {
-			this.dispatchEvent(new CustomEvent(ARKitWrapper.INIT_EVENT, {
-				source: this
-			}))
+			this.dispatchEvent(
+				ARKitWrapper.INIT_EVENT,
+				new CustomEvent(ARKitWrapper.INIT_EVENT, {
+					source: this
+				})
+			)
         } catch(e) {
             console.error('INIT_EVENT event error', e)
         }
@@ -829,10 +830,13 @@ export default class ARKitWrapper extends EventTarget {
 	_onWatch(data){
 		this._rawARData = data
 		try {
-			this.dispatchEvent(new CustomEvent(ARKitWrapper.WATCH_EVENT, {
-				source: this,
-				detail: this._rawARData
-			}))
+			this.dispatchEvent(
+				ARKitWrapper.WATCH_EVENT, 
+				new CustomEvent(ARKitWrapper.WATCH_EVENT, {
+					source: this,
+					detail: this._rawARData
+				})
+			)
         } catch(e) {
             console.error('WATCH_EVENT event error', e)
         }
@@ -1092,6 +1096,7 @@ export default class ARKitWrapper extends EventTarget {
 			var xrVideoFrame = new XRVideoFrame(detail.frame.buffers, detail.frame.pixelFormat, this._adjustARKitTime(detail.frame.timestamp), detail.camera )
 			try {
 				this.dispatchEvent(
+					ARKitWrapper.COMPUTER_VISION_DATA,
 					new CustomEvent(
 						ARKitWrapper.COMPUTER_VISION_DATA,
 						{
