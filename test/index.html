@@ -73,7 +73,9 @@
 
 				engine = new XREngine(canvas, glContext)
 				engine.addAmbientLight()
-				engine.addBox([0, 0, -1])
+				engine.addDirectionalLight()
+				engine.addBox([0, -0.5, -0.5])
+				engine.addSphere([0, -0.3, -0.6])
 
 				session.requestFrameOfReference('eyeLevel')
 					.then(handleFrameOfReference)

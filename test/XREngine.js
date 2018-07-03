@@ -31,10 +31,28 @@ export default class XREngine {
 	get camera() { return this._camera }
 	get renderer() { return this._renderer }
 
-	addAmbientLight(color=0xffffff, intensity=0.5){
+	addDirectionalLight(color=0xffffff, intensity=0.7, position=[0, 10, 20]){
+		const light = new THREE.DirectionalLight(color, intensity)
+		light.position.set(...position)
+		this._scene.add(light)
+		this._scene.add(light.target)
+		return light
+	}
+
+	addAmbientLight(color=0xffffff, intensity=0.2){
 		const light = new THREE.AmbientLight(color, intensity)
 		this._scene.add(light)
 		return light
+	}
+
+	addSphere(position=[0,0,0], size=[0.1, 0.1, 0.1], color=0x00FF00){
+		const sphere = new THREE.Mesh(
+			new THREE.SphereBufferGeometry(...size),
+			new THREE.MeshLambertMaterial({ color: color })
+		)
+		sphere.position.set(...position)
+		this._scene.add(sphere)
+		return sphere
 	}
 
 	addBox(position=[0,0,0], size=[0.1, 0.1, 0.1], color=0x00FF00){
