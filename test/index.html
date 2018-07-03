@@ -9,6 +9,7 @@
 			}
 			html, 
 			body, 
+			.xr-canvas,
 			.arkit-device-wrapper, 
 			.arkit-device-wrapper canvas {
 				width: 100%;
@@ -19,13 +20,18 @@
 			body {
 				z-index: 1;
 			}
-			.arkit-device-wrapper {
-				z-index: -1;
+			.arkit-device-wrapper, .xr-canvas {
 				position: absolute;
 				top: 0;
 				left: 0;
 				bottom: 0;
 				right: 0;
+			}
+			.arkit-device-wrapper {
+				z-index: -1;
+			}
+			.xr-canvas {
+				z-index: -2;
 			}
 		</style>
 	</head>
@@ -41,10 +47,15 @@
 			var frameOfReference = null
 			var engine = null
 
-			navigator.xr.requestDevice().then(dev => {
-				device = dev
+			// Create the output context where the XRSession will place composited renders
+			const xrCanvas = document.createElement('canvas')
+			xrCanvas.setAttribute('class', 'xr-canvas')
+			const xrContext = xrCanvas.getContext('xrpresent');
+
+			navigator.xr.requestDevice().then(xrDevice => {
+				device = xrDevice
 			}).catch(err => {
-				console.error('Could not find XR device', err)
+				console.error('Error', err)
 			})
 
 			function handleStartSessionRequest(ev){
@@ -52,7 +63,8 @@
 					console.error('No xr device')
 					return
 				}
-				device.requestSession({ exclusive: true })
+
+				device.requestSession({ outputContext: xrContext })
 					.then(handleSessionStarted)
 					.catch(err => {
 						console.error('Error', err)
@@ -63,14 +75,19 @@
 			function handleSessionStarted(xrSession){
 				session = xrSession
 
-				// Set up the base layer
+				document.body.insertBefore(xrCanvas, document.body.firstChild)
+
+				// Create the context where we will render our 3D scene
 				const canvas = document.createElement('canvas')
-				const glContext = canvas.getContext('webgl', {
+				var glContext = canvas.getContext('webgl', {
 					compatibleXRDevice: device
 				})
 				if(!glContext) throw new Error('Could not create a webgl context')
+
+				// Set up the base layer
 				session.baseLayer = new XRWebGLLayer(session, glContext)
 
+				// Create a simple test scene and renderer
 				engine = new XREngine(canvas, glContext)
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
@@ -99,7 +116,7 @@
 					return
 				}
 
-				engine.renderer.clear()
+				engine.startFrame()
 				for (let view of frame.views) {
 					engine.render(
 						session.baseLayer.getViewport(view),
@@ -108,6 +125,7 @@
 					)
 					break
 				}
+				engine.endFrame()
 			}
 
 		</script>

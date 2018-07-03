@@ -13,7 +13,7 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		this._throttledLogPose = throttle(this.logPose, 1000)
 
 		this._sessions = new Map()
-		this._exclusiveSession = null
+		this._activeSession = null
 
 		// A div prepended to body children that will contain the session layer
 		this._wrapperDiv = document.createElement('div')
@@ -47,7 +47,7 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	set depthFar(val){ this._depthFar = val }
 
 	supportsSession(options={}){
-		return options.exclusive === true
+		return options.exclusive === false
 	}
 
 	async requestSession(options={}){
@@ -55,14 +55,14 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			console.error('Invalid session options', options)
 			return Promise.reject()
 		}
-		if(this._exclusiveSession !== null){
-			console.error('Tried to start a second exclusive session')
+		if(this._activeSession !== null){
+			console.error('Tried to start a second active session')
 			return Promise.reject()
 		}
 
 		const session = new Session(options.outputContext || null)
 		this._sessions.set(session.id, session)
-		this.exclusiveSession = session
+		this._activeSession = session
 		this._arKitWrapper.waitForInit().then(() => {
 			this._arKitWrapper.watch()
 		})
@@ -111,8 +111,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		const session = this._sessions.get(sessionId);
 		if (session.ended) return
 		session.ended = true
-		if(this._exclusiveSession === session){
-			this._exclusiveSession = null
+		if(this._activeSession === session){
+			this._activeSession = null
 			this._arKitWrapper.stop()
 		}
 		if(session.baseLayer !== null){

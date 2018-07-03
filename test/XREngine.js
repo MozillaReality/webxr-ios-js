@@ -17,6 +17,10 @@ export default class XREngine {
 		this._renderer.setPixelRatio(1)
 	}
 
+	startFrame(){
+		this._renderer.clear()
+	}
+
 	render(viewport, projectionMatrix, viewMatrix){
 		this._camera.matrix.fromArray(viewMatrix)
 		this._camera.updateMatrixWorld()
@@ -26,6 +30,8 @@ export default class XREngine {
 		this._renderer.clearDepth()
 		this._renderer.render(this._scene, this._camera)
 	}
+
+	endFrame(){}
 
 	get scene(){ return this._scene }
 	get camera() { return this._camera }
