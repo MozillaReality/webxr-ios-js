@@ -3,6 +3,7 @@
 		<meta charset="utf-8">
 		<script src="./libs/three/three.min.js"></script>
 		<script module src="../dist/webxr.js"></script>
+		<script module src="../dist/hit-test.js"></script>
 		<style>
 			button {
 				font-size: 16px;
@@ -50,7 +51,7 @@
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
 			xrCanvas.setAttribute('class', 'xr-canvas')
-			const xrContext = xrCanvas.getContext('xrpresent');
+			const xrContext = xrCanvas.getContext('xrpresent')
 
 			navigator.xr.requestDevice().then(xrDevice => {
 				device = xrDevice

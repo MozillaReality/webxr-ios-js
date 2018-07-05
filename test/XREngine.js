@@ -1,3 +1,6 @@
+/*
+A wrapper around the Three renderer and related classes, useful for quick testing.
+*/
 export default class XREngine {
 	constructor(glCanvas, glContext){
 		this._glCanvas = glCanvas
