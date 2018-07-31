@@ -3,7 +3,6 @@
 		<meta charset="utf-8">
 		<script src="./libs/three/three.min.js"></script>
 		<script module src="../dist/webxr.js"></script>
-		<script module src="../dist/hit-test.js"></script>
 		<style>
 			button {
 				font-size: 16px;
@@ -52,7 +51,9 @@
 			const xrCanvas = document.createElement('canvas')
 			xrCanvas.setAttribute('class', 'xr-canvas')
 			const xrContext = xrCanvas.getContext('xrpresent')
-
+			if(!xrContext){
+				console.error('No XR context', xrCanvas)
+			}
 			navigator.xr.requestDevice().then(xrDevice => {
 				device = xrDevice
 			}).catch(err => {
@@ -95,7 +96,7 @@
 				engine.addBox([0, -0.5, -0.5])
 				engine.addSphere([0, -0.3, -0.6])
 
-				session.requestFrameOfReference('eyeLevel')
+				session.requestFrameOfReference('eye-level')
 					.then(handleFrameOfReference)
 					.catch(err => {
 						console.error('Error finding frame of reference', err)

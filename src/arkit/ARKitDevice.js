@@ -47,12 +47,16 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	set depthFar(val){ this._depthFar = val }
 
 	supportsSession(options={}){
-		return options.exclusive === false
+		return options.immersive === false
 	}
 
 	async requestSession(options={}){
 		if(!this.supportsSession(options)){
 			console.error('Invalid session options', options)
+			return Promise.reject()
+		}
+		if(!this._arKitWrapper){
+			console.error('Session requested without an ARKitWrapper')
 			return Promise.reject()
 		}
 		if(this._activeSession !== null){
@@ -100,7 +104,7 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	async requestFrameOfReferenceTransform(type, options){
 		switch(type){
-			case 'eyeLevel':
+			case 'eye-level':
 				return this._eyeLevelMatrix
 			default:
 				throw new Error('Unsupported frame of reference type', type)
