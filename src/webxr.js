@@ -3,6 +3,7 @@ import WebXRPolyfill from 'webxr-polyfill'
 import XRHitResult from './extensions/XRHitResult.js'
 
 import ARKitDevice from './arkit/ARKitDevice.js'
+import ARKitWrapper from './arkit/ARKitWrapper.js'
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
@@ -23,11 +24,14 @@ Now install a few proposed AR extensions to the WebXR Device API:
 - anchors: https://github.com/immersive-web/anchors
 */
 
+const arkitWrapper = ARKitWrapper.GetOrCreate()
+
 // This will be XRSession.requestHitTest
 async function xrSessionRequestHitTest(origin, direction, coordinateSystem){
 	// Promise<FrozenArray<XRHitResult>> requestHitTest(Float32Array origin, Float32Array direction, XRCoordinateSystem coordinateSystem);
-	console.log('TBD requesting hit test', origin, direction, coordinateSystem)
-	return []
+	return new Promise((resolve, reject) => {
+		resolve([])
+	})
 }
 
 function installExtensions(){

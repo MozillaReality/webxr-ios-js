@@ -33,10 +33,10 @@
 			.xr-canvas {
 				z-index: -2;
 			}
+			#go-button { margin: 20px; }
 		</style>
 	</head>
 	<body>
-		<h1>Test</h1>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
 			import XREngine from "./XREngine.js"
@@ -69,7 +69,7 @@
 				device.requestSession({ outputContext: xrContext })
 					.then(handleSessionStarted)
 					.catch(err => {
-						console.error('Error', err)
+						console.error('Session setup error', err)
 					})
 			}
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
