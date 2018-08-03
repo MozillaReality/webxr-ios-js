@@ -25,7 +25,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		this._basePoseMatrix = mat4.create() // Model and view matrix are the same
 		this._projectionMatrix = mat4.create()
 
-		this._eyeLevelMatrix = mat4.create()
+		this._eyeLevelMatrix = mat4.identity(mat4.create())
+		this._stageMatrix = mat4.identity(mat4.create())
 
 		this._depthNear = 0.1
 		this._depthFar = 1000
@@ -106,6 +107,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		switch(type){
 			case 'eye-level':
 				return this._eyeLevelMatrix
+			case 'stage':
+				return this._stageMatrix
 			default:
 				throw new Error('Unsupported frame of reference type', type)
 		}

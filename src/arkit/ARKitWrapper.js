@@ -290,6 +290,39 @@ export default class ARKitWrapper extends EventTarget {
 		return hitTestUtils.hitTestNoAnchor(x, y, this.getPlanes(), this._projectionMatrix, this._viewMatrix)
 	}
 
+	pickBestHit(hits){
+		if(hits.length === 0) return null
+
+		let planeResults = hits.filter(
+			hitTestResult => hitTestResult.type != ARKitWrapper.HIT_TEST_TYPE_FEATURE_POINT
+		)
+		let planeExistingUsingExtentResults = planeResults.filter(
+			hitTestResult => hitTestResult.type == ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_EXTENT
+		)
+		let planeExistingResults = planeResults.filter(
+			hitTestResult => hitTestResult.type == ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE
+		)
+
+		if (planeExistingUsingExtentResults.length) {
+			// existing planes using extent first
+			planeExistingUsingExtentResults = planeExistingUsingExtentResults.sort((a, b) => a.distance - b.distance)
+			return planeExistingUsingExtentResults[0]
+		} else if (planeExistingResults.length) {
+			// then other existing planes
+			planeExistingResults = planeExistingResults.sort((a, b) => a.distance - b.distance)
+			return planeExistingResults[0]
+		} else if (planeResults.length) {
+			// other types except feature points
+			planeResults = planeResults.sort((a, b) => a.distance - b.distance)
+			return planeResults[0]
+		} else {
+			// feature points if any
+			return hits[0]
+		}
+		return null
+	}
+
+
 	/*
 	Sends an addAnchor message to ARKit
 	Returns a promise that returns:

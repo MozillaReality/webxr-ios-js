@@ -40,12 +40,17 @@
 		<button type=button id=go-button>Go</button>
 		<script type=module>
 			import XREngine from "./XREngine.js"
+			import XRInputManager from "./XRInputManager.js"
 
-			var device = null
-			var session = null
-			var layer = null
-			var frameOfReference = null
-			var engine = null
+			let device = null
+			let session = null
+			let stageFrameOfReference = null
+			let eyeLevelFrameOfReference = null
+			let layer = null
+			let frameOfReference = null
+			let engine = null
+			
+			let inputManager = new XRInputManager(handleXRInput)
 
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
@@ -60,6 +65,31 @@
 				console.error('Error', err)
 			})
 
+			function handleXRInput(eventName, details){
+				switch(eventName){
+					case 'normalized-touch':
+						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
+						break
+					default:
+						console.error('unknown xr input event', eventName, details)
+						break
+				}
+			}
+
+			function hitTestWithScreenCoordinates(normalizedX, normalizedY){
+				if(session === null){
+					console.log('No session for hit testing')
+					return
+				}
+				if(eyeLevelFrameOfReference === null){
+					console.log('No stage frame of reference')
+					return
+				}
+				session.requestHitTest(null, null, eyeLevelFrameOfReference).then((...params) => {
+					console.log('hit test', ...params)
+				})
+			}
+
 			function handleStartSessionRequest(ev){
 				if(device === null){
 					console.error('No xr device')
@@ -72,10 +102,17 @@
 						console.error('Session setup error', err)
 					})
 			}
+
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
 
 			function handleSessionStarted(xrSession){
 				session = xrSession
+				session.requestFrameOfReference('stage').then(frameOfReference =>{
+					stageFrameOfReference = frameOfReference
+				})
+				session.requestFrameOfReference('eye-level').then(frameOfReference =>{
+					eyeLevelFrameOfReference = frameOfReference
+				})
 
 				document.body.insertBefore(xrCanvas, document.body.firstChild)
 
