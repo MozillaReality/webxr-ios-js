@@ -1,4 +1,4 @@
-import WebXRPolyfill from 'webxr-polyfill'
+import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill'
 import {PRIVATE} from 'webxr-polyfill/src/api/XRFrameOfReference'
 
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
