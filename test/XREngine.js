@@ -1,3 +1,6 @@
+
+const PI_OVER_180 = Math.PI / 180
+
 /*
 A wrapper around the Three renderer and related classes, useful for quick testing.
 */
@@ -6,7 +9,10 @@ export default class XREngine {
 		this._glCanvas = glCanvas
 		this._glContext = glContext
 
-		this._camera = new THREE.PerspectiveCamera(45, 1, 0.5, 10000)
+		const aspectRatio = document.documentElement.offsetWidth / document.documentElement.offsetHeight
+
+		// Dynamically calculate the FOV
+		this._camera = new THREE.PerspectiveCamera(45, aspectRatio, 0.5, 10000)
 		this._camera.matrixAutoUpdate = false
 		this._scene = new THREE.Scene()
 		this._scene.add(this._camera)
@@ -39,6 +45,10 @@ export default class XREngine {
 	get scene(){ return this._scene }
 	get camera() { return this._camera }
 	get renderer() { return this._renderer }
+
+	get near(){ return this._camera.near }
+	get far(){ return this._camera.far }
+	get fov(){ return this._camera.fov * PI_OVER_180 }
 
 	addDirectionalLight(color=0xffffff, intensity=0.7, position=[0, 10, 20]){
 		const light = new THREE.DirectionalLight(color, intensity)

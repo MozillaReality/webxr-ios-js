@@ -105,6 +105,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	async requestFrameOfReferenceTransform(type, options){
 		switch(type){
+			case 'head-model':
+				return this._basePoseMatrix
 			case 'eye-level':
 				return this._eyeLevelMatrix
 			case 'stage':
