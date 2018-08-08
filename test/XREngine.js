@@ -12,7 +12,7 @@ export default class XREngine {
 		const aspectRatio = document.documentElement.offsetWidth / document.documentElement.offsetHeight
 
 		// Dynamically calculate the FOV
-		this._camera = new THREE.PerspectiveCamera(45, aspectRatio, 0.5, 10000)
+		this._camera = new THREE.PerspectiveCamera(45, aspectRatio, 0.1, 10000)
 		this._camera.matrixAutoUpdate = false
 		this._scene = new THREE.Scene()
 		this._scene.add(this._camera)

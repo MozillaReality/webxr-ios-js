@@ -22,11 +22,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			document.body.insertBefore(this._wrapperDiv, document.body.firstChild || null)
 		})
 
-		this._basePoseMatrix = mat4.create() // Model and view matrix are the same
+		this._headModelMatrix = mat4.create() // Model and view matrix are the same
 		this._projectionMatrix = mat4.create()
-
 		this._eyeLevelMatrix = mat4.identity(mat4.create())
 		this._stageMatrix = mat4.identity(mat4.create())
+		this._stageMatrix[13] = -1.3
 
 		this._depthNear = 0.1
 		this._depthFar = 1000
@@ -98,15 +98,15 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	logPose(){
 		console.log('pose', 
-			mat4.getTranslation(new Float32Array(3), this._basePoseMatrix),
-			mat4.getRotation(new Float32Array(4), this._basePoseMatrix)
+			mat4.getTranslation(new Float32Array(3), this._headModelMatrix),
+			mat4.getRotation(new Float32Array(4), this._headModelMatrix)
 		)
 	}
 
 	async requestFrameOfReferenceTransform(type, options){
 		switch(type){
 			case 'head-model':
-				return this._basePoseMatrix
+				return this._headModelMatrix
 			case 'eye-level':
 				return this._eyeLevelMatrix
 			case 'stage':
@@ -147,16 +147,16 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		mat4.copy(this._projectionMatrix, matrix)
 	}
 
-	// The model and view matrices are the same
+	// The model and view matrices are the same head-model matrix
 	getBasePoseMatrix(){
-		return this._basePoseMatrix
+		return this._headModelMatrix
 	}
 	getBaseViewMatrix(eye){
-		return this._basePoseMatrix
+		return this._headModelMatrix
 	}
 
 	setBaseViewMatrix(matrix){
-		mat4.copy(this._basePoseMatrix, matrix)
+		mat4.copy(this._headModelMatrix, matrix)
 	}
 
 	requestStageBounds(){

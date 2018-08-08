@@ -49,22 +49,13 @@ async function xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	}
 	return new Promise((resolve, reject) => {
 		// TODO get the actual near plane and FOV
-		const normalizedScreenCoordinates = convertRayOriginToScreenCoordinates(origin, 0.5, 0.7853981633974483)
+		const normalizedScreenCoordinates = convertRayOriginToScreenCoordinates(origin, 0.1, 0.7853981633974483)
 		arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANES).then(hits => {
-			this.requestFrameOfReference('stage').then(stageFoR => {
-				const csTransform = stageFoR.getTransformTo(coordinateSystem)
+			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
+				const csTransform = eyeLevelFrameOfReference.getTransformTo(coordinateSystem)
 				resolve(hits.map(hit => {
 					return new XRHitResult(mat4.multiply(mat4.create(), hit.world_transform, csTransform))
-				}).sort((hit1, hit2) => {
-					const distance1 = vec3.length(vec3.subtract(vec3.create(), [hit1.hitMatrix[12], hit1.hitMatrix[13], hit1.hitMatrix[14]], origin))
-					const distance2 = vec3.length(vec3.subtract(vec3.create(), [hit2.hitMatrix[12], hit2.hitMatrix[13], hit2.hitMatrix[14]], origin))
-					if(distance1 < distance2) return -1
-					if(distance2 < distance1) return 1
-					return 0
 				}))
-			}).catch(err => {
-				console.error('No frame of reference', err)
-				reject()
 			})
 		}).catch((...params) => {
 			console.error('Error testing for hits', ...params)

@@ -53,11 +53,10 @@
 			let frameOfReference = null
 			let engine = null
 			
-			let lastViewMatrix = null
+			const workingMatrix1 = mat4.create()
+			const identity = mat4.identity(mat4.create())
 
-			let identity = mat4.identity(mat4.create())
-
-			let inputManager = new XRInputManager(handleXRInput)
+			const inputManager = new XRInputManager(handleXRInput)
 
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
@@ -75,22 +74,11 @@
 			function handleXRInput(eventName, details){
 				switch(eventName){
 					case 'normalized-touch':
-						hitTestWithScreenCoordinates(...details.normalizedCoordinates).then(hits => {
-							const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
-							const elMatrix = mat4.create()
-							for(let hit of hits){
-								mat4.multiply(elMatrix, hit.hitMatrix, csTransform)
-								console.log(
-									'hit',
-									[hit.hitMatrix[12], hit.hitMatrix[13], hit.hitMatrix[14]],
-									[elMatrix[12], elMatrix[13], elMatrix[14]]
-								)
-								engine.addBox([elMatrix[12], elMatrix[13], elMatrix[14]], [0.03, 0.03, 0.03], 0xff00ff)
-								break
-							}
-						}).catch(err => {
-							console.error('Error testing hits', err)
-						})
+						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
+							.then(handleHitResults)
+							.catch(err => {
+								console.error('Error testing hits', err)
+							})
 						break
 					default:
 						console.error('unknown xr input event', eventName, details)
@@ -107,13 +95,17 @@
 					console.log('No frame of reference')
 					return Promise.reject()
 				}
-				if(lastViewMatrix === null){
-					console.log('No view matrix')
-					return Promise.reject()
-				}
-
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, engine.near, engine.far, engine.fov)
 				return session.requestHitTest(origin, direction, headFrameOfReference)
+			}
+
+			function handleHitResults(hits) {
+				for(let hit of hits){
+					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
+					mat4.multiply(workingMatrix1, hit.hitMatrix, csTransform)
+					engine.addBox([workingMatrix1[12], workingMatrix1[13], workingMatrix1[14]], [0.03, 0.03, 0.03], 0xff00ff)
+					break
+				}
 			}
 
 			function handleStartSessionRequest(ev){
@@ -149,7 +141,7 @@
 				engine = new XREngine(canvas, glContext)
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
-				engine.addBox([0, 0, 0], [0.08, 0.08, 0.08], 0x00ffff)
+				engine.addBox([0, 0, 0], [0.08, 0.08, 0.08], 0xffff99)
 
 				session.requestFrameOfReference('head-model').then(frameOfReference =>{
 					headFrameOfReference = frameOfReference
@@ -178,13 +170,11 @@
 				}
 
 				engine.startFrame()
-				let isFirstView = true
 				for (let view of frame.views) {
-					lastViewMatrix = pose.getViewMatrix(view)
 					engine.render(
 						session.baseLayer.getViewport(view),
 						view.projectionMatrix,
-						lastViewMatrix
+						pose.getViewMatrix(view)
 					)
 					break
 				}
