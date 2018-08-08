@@ -99,8 +99,16 @@
 					console.log('No frame of reference')
 					return Promise.reject()
 				}
-				// Convert the screen coordinates into origin/direction for hit testing
+				// Convert the screen coordinates into head-model origin/direction for hit testing
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, engine.near, engine.far, engine.fov)
+
+				/*
+				// Add a box at the origin
+				const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
+				mat4.multiply(workingMatrix1, mat4.fromTranslation(mat4.create(), [origin[0], origin[1], 0]), csTransform)
+				engine.addBox([workingMatrix1[12], workingMatrix1[13], workingMatrix1[14]], [0.01, 0.01, 0.01], 0xffff66)
+				*/
+
 				return session.requestHitTest(origin, direction, headFrameOfReference)
 			}
 
