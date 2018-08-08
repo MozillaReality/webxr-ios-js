@@ -44,13 +44,18 @@ const arKitWrapper = ARKitWrapper.GetOrCreate()
 // This will be XRSession.requestHitTest
 async function xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	// Promise<FrozenArray<XRHitResult>> requestHitTest(Float32Array origin, Float32Array direction, XRCoordinateSystem coordinateSystem);
+
+	// ARKit only handles hit testing from the screen, so only head model FoR is accepted
 	if(coordinateSystem.type !== 'head-model'){
 		return Promise.reject('Only head-model hit testing is supported')
 	}
 	return new Promise((resolve, reject) => {
 		// TODO get the actual near plane and FOV
+		// Calculate the screen coordinates from the origin
 		const normalizedScreenCoordinates = convertRayOriginToScreenCoordinates(origin, 0.1, 0.7853981633974483)
+		// Perform the hit test
 		arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANES).then(hits => {
+			// Hit results are in the tracker (aka eye-level) coordinate system, so transform them back to head-model since the passed origin and results must be in the same coordinate system
 			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
 				const csTransform = eyeLevelFrameOfReference.getTransformTo(coordinateSystem)
 				resolve(hits.map(hit => {

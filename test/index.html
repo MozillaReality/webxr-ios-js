@@ -65,12 +65,16 @@
 			if(!xrContext){
 				console.error('No XR context', xrCanvas)
 			}
+
 			navigator.xr.requestDevice().then(xrDevice => {
 				device = xrDevice
 			}).catch(err => {
 				console.error('Error', err)
 			})
 
+			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
+
+			// handle input events from the XRInputManager
 			function handleXRInput(eventName, details){
 				switch(eventName){
 					case 'normalized-touch':
@@ -95,14 +99,17 @@
 					console.log('No frame of reference')
 					return Promise.reject()
 				}
+				// Convert the screen coordinates into origin/direction for hit testing
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, engine.near, engine.far, engine.fov)
 				return session.requestHitTest(origin, direction, headFrameOfReference)
 			}
 
 			function handleHitResults(hits) {
 				for(let hit of hits){
+					// convert hit matrices from head to eye level coordinate systems
 					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
 					mat4.multiply(workingMatrix1, hit.hitMatrix, csTransform)
+					// show a box at the hit
 					engine.addBox([workingMatrix1[12], workingMatrix1[13], workingMatrix1[14]], [0.03, 0.03, 0.03], 0xff00ff)
 					break
 				}
@@ -120,8 +127,6 @@
 						console.error('Session setup error', err)
 					})
 			}
-
-			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
 
 			function handleSessionStarted(xrSession){
 				session = xrSession
