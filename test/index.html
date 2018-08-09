@@ -119,7 +119,7 @@
 					mat4.multiply(workingMatrix1, hit.hitMatrix, csTransform)
 					// show a box at the hit
 					engine.addBox([workingMatrix1[12], workingMatrix1[13], workingMatrix1[14]], [0.05, 0.05, 0.05], 0xff4444)
-					break
+					console.log('box transform', mat4.getTranslation(vec3.create(), workingMatrix1), mat4.getRotation(new Float32Array(4), workingMatrix1))
 				}
 			}
 

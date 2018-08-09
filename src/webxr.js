@@ -10,6 +10,7 @@ import ARKitDevice from './arkit/ARKitDevice.js'
 import ARKitWrapper from './arkit/ARKitWrapper.js'
 
 const _workingMatrix = mat4.create()
+const PI_OVER_180 = Math.PI / 180
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
@@ -56,7 +57,7 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	return new Promise((resolve, reject) => {
 		// TODO get the actual near plane and FOV
 		// Calculate the screen coordinates from the origin
-		const normalizedScreenCoordinates = _convertRayOriginToScreenCoordinates(origin, 0.1, 0.7853981633974483)
+		const normalizedScreenCoordinates = _convertRayOriginToScreenCoordinates(origin, 0.1, 70 * PI_OVER_180)
 		console.log('and back', ...normalizedScreenCoordinates)
 
 		// Perform the hit test
@@ -65,11 +66,11 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 			// Hit results are in the tracker (aka eye-level) coordinate system, so transform them back to head-model since the passed origin and results must be in the same coordinate system
 			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
 				const csTransform = eyeLevelFrameOfReference.getTransformTo(coordinateSystem)
-				console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
+				//console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
 				resolve(hits.map(hit => {
 					const hitInHeadMatrix = mat4.multiply(mat4.create(), hit.world_transform, csTransform)
 					console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
-					console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
+					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
 					return new XRHitResult(hitInHeadMatrix)
 				}))
 			})
