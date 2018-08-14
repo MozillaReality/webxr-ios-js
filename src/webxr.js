@@ -54,14 +54,18 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	if(coordinateSystem.type !== 'head-model'){
 		return Promise.reject('Only head-model hit testing is supported')
 	}
+
+	if(origin[0] != 0.0 && origin[1] != 0.0 && origin[2] != 0.0) {
+		return Promise.reject('Platform only supports hit testing with ray origin = [0,0,0]')
+	}
+
 	return new Promise((resolve, reject) => {
-		// TODO get the actual near plane and FOV
-		// Calculate the screen coordinates from the origin
-		const normalizedScreenCoordinates = _convertRayOriginToScreenCoordinates(origin, 0.1, 70 * PI_OVER_180)
+		const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix)
+
 		console.log('and back', ...normalizedScreenCoordinates)
 
 		// Perform the hit test
-		_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANES).then(hits => {
+		_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
 			if(hits.length === 0) resolve([])
 			// Hit results are in the tracker (aka eye-level) coordinate system, so transform them back to head-model since the passed origin and results must be in the same coordinate system
 			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
@@ -82,26 +86,22 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 }
 
 /**
-Take a vec3 point on the screen in world space and return normalized x,y screen coordinates
-@param rayOrigin {vec3}
-@return [x,y] in range [-1,1]
+Take a vec3 direction vector through the screen and return normalized x,y screen coordinates
+@param ray {vec3}
+@param projectionMatrix {mat4}
+@return [x,y] in range [0,1]
 */
-function _convertRayOriginToScreenCoordinates(rayOrigin, near, fov){
-	const nearLengthFromCenter = near * Math.tan(fov / 2)
-	let x = rayOrigin[0] / nearLengthFromCenter
-	let y = rayOrigin[1] / nearLengthFromCenter
+function _convertRayToARKitScreenCoordinates(ray, projectionMatrix){
+	var proj = vec3.transformMat4(vec3.create(), ray, projectionMatrix)
+	console.log('project', ...proj)
 
-	const width = document.documentElement.offsetWidth
-	const height = document.documentElement.offsetHeight
-	if(width < height){
-		x *= height / width
-	} else {
-		y *= width / height
-	}
+	let x = (proj[0] + 1)/2;
+	let y = (-proj[1] + 1)/2;
 
 	return [x, y]
 }
 
+/**
 function _installExtensions(){
 	if(!navigator.xr) return
 

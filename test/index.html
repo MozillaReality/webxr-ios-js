@@ -100,7 +100,8 @@
 					return Promise.reject()
 				}
 				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, engine.near, engine.far, engine.fov)
+				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
+													    								 engine.camera.projectionMatrix)
 
 				/*
 				// Add a box at the origin
@@ -113,13 +114,21 @@
 			}
 
 			function handleHitResults(hits) {
+				let size = 0.05;
 				for(let hit of hits){
+					// TODO ONLY use one hit result to create a box!
+
 					// convert hit matrices from head to eye level coordinate systems
 					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
 					mat4.multiply(workingMatrix1, hit.hitMatrix, csTransform)
+
+					// get an offset based on Y vec in the matrix transform, and size of cube
+					let offset = [workingMatrix1[1] * size * 0.5, workingMatrix1[5] * size * 0.5, workingMatrix1[9] * size * 0.5]
+
 					// show a box at the hit
-					engine.addBox([workingMatrix1[12], workingMatrix1[13], workingMatrix1[14]], [0.05, 0.05, 0.05], 0xff4444)
-					console.log('box transform', mat4.getTranslation(vec3.create(), workingMatrix1), mat4.getRotation(new Float32Array(4), workingMatrix1))
+					engine.addBox([workingMatrix1[12] + offset[0], workingMatrix1[13]  + offset[1], workingMatrix1[14] + offset[2]], 
+								  [size, size, size], 0xff4444)
+					console.log('box transform', mat4.getTranslation(vec3.create(), workingMatrix1), mat4.getRotation(new Float32Array(4), workingMatrix1), offset)
 				}
 			}
 

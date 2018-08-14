@@ -29,25 +29,15 @@ export default class XRInputManager {
 
 	/**
 	@return [origin {vec3}, direction {vec3}]
+	* origin is always [0,0,0], direction is a vector through the viewing screen
 	*/
-	static convertScreenCoordinatesToRay(normalizedX, normalizedY, near, far, fov){
-		let dx = Math.tan(fov * 0.5) * normalizedX
-		let dy = Math.tan(fov * 0.5) * normalizedY
+	static convertScreenCoordinatesToRay(normalizedX, normalizedY, projectionMatrix){
+		var rayorigin = vec3.create();
+		mat4.invert(_workingMatrix1, projectionMatrix.elements );
+		var raydir = vec3.fromValues(normalizedX, normalizedY, 0.5);
+		vec3.transformMat4(raydir,raydir,_workingMatrix1);
+		vec3.normalize(raydir, raydir);
 
-		const width = document.documentElement.offsetWidth
-		const height = document.documentElement.offsetHeight
-		if(width < height){
-			dx *= width / height
-		} else {
-			dy *= height / width
-		}
-
-		// Find the near plane intersection
-		const nearPoint = [dx * near, dy * near, -1 * near]
-		// Find the far plane intersection
-		const farPoint = [dx * far,  dy * far,  -1 * far]
-
-		// return the origin and direction
-		return [nearPoint, vec3.normalize(farPoint, vec3.subtract(farPoint, farPoint, nearPoint))]
+		return [rayorigin,raydir]
 	}
 }
