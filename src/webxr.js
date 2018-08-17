@@ -101,7 +101,6 @@ function _convertRayToARKitScreenCoordinates(ray, projectionMatrix){
 	return [x, y]
 }
 
-/**
 function _installExtensions(){
 	if(!navigator.xr) return
 
