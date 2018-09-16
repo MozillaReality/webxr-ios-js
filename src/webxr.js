@@ -62,7 +62,7 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	return new Promise((resolve, reject) => {
 		const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix)
 
-		console.log('and back', ...normalizedScreenCoordinates)
+		//console.log('and back', ...normalizedScreenCoordinates)
 
 		// Perform the hit test
 		_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
@@ -73,7 +73,7 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 				//console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
 				resolve(hits.map(hit => {
 					const hitInHeadMatrix = mat4.multiply(mat4.create(), hit.world_transform, csTransform)
-					console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
+					//console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
 					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
 					return new XRHitResult(hitInHeadMatrix)
 				}))
@@ -93,7 +93,7 @@ Take a vec3 direction vector through the screen and return normalized x,y screen
 */
 function _convertRayToARKitScreenCoordinates(ray, projectionMatrix){
 	var proj = vec3.transformMat4(vec3.create(), ray, projectionMatrix)
-	console.log('project', ...proj)
+	//console.log('project', ...proj)
 
 	let x = (proj[0] + 1)/2;
 	let y = (-proj[1] + 1)/2;
