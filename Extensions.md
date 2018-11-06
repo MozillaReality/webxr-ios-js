@@ -46,9 +46,9 @@ Right now the data is all associated with Anchors (planes, faces) in the WebXR V
 
 
 ## Camera Access
-- session.startVideoFrames()
 - session.setVideoFrameHandler(worker)   
     - probably want to only use callback.  Perhaps turn requestVideoFrame into something returning a promise?
+- session.startVideoFrames()
 - session.requestVideoFrame()
 - session.getVideoFramePose(videoFrame, camPose)
 - videoFrame.release()
