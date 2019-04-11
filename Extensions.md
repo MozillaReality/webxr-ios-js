@@ -1,4 +1,4 @@
-# Extensions to WebXR Implmented by the WebXR Viewer
+# Extensions to WebXR Implemented by the WebXR Viewer
 
 This document summarizes the extensions to WebXR provided by this implementation of WebXR and the WebXR Viewer.  It is not intended to be comprehensive developer documentation;  rather, it is here to provide a starting point for developers wishing to contribute to (or understand) this code.
 
@@ -27,6 +27,10 @@ Events on session:
 XRAnchor
 - pose
 
+XRPlaneAnchor
+- pose
+- geometry (center, extent, alignment, geometry)
+
 XRFaceAnchor
 - pose
 - geometry (vertexCount, vertices, triangleIndices)
@@ -42,10 +46,14 @@ XRImageAnchor
 
 
 ## World Knowledge
+We will need to see how https://github.com/immersive-web/real-world-geometry progresses
+
 Right now the data is all associated with Anchors (planes, faces) in the WebXR Viewer.
 
 
 ## Camera Access
+Will want to see how https://github.com/immersive-web/computer-vision progresses.
+
 - session.setVideoFrameHandler(worker)   
     - probably want to only use callback.  Perhaps turn requestVideoFrame into something returning a promise?
 - session.startVideoFrames()
