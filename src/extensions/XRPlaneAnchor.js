@@ -12,6 +12,13 @@ export default class XRPlaneAnchor extends XRAnchor {
 		this._geometry = geometry
 	}
 
+	updatePlaneData(center, extent, alignment, geometry) {
+		this._center = center
+		this._extent = extent
+		this._alignment = alignment
+		this._geometry = geometry
+	}
+
 	get center() { return this._center }
 	get extent() { return this._extent }
 	get alignment() { return this._alignment }

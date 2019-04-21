@@ -1,0 +1,51 @@
+#description {
+    pointer-events: auto;
+    font-family: sans-serif;
+    padding: 1em;
+    background-color:rgba(255,255,255,0.7);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+    position:absolute;
+    bottom: 0px;
+    left:0px;
+    right: 0px;
+}
+.common-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+}
+button {
+    font-size: 16px;
+}
+html, 
+body, 
+.xr-canvas,
+.arkit-device-wrapper, 
+.arkit-device-wrapper canvas {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    -webkit-user-select: none;
+    user-select: none;
+}
+body {
+    z-index: 1;
+}
+.arkit-device-wrapper, .xr-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+}
+.arkit-device-wrapper {
+    z-index: -1;
+}
+.xr-canvas {
+    z-index: -2;
+}
+#go-button { margin: 20px; }
