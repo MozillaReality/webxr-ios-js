@@ -1,4 +1,5 @@
 import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
+import * as mat3 from "gl-matrix/src/gl-matrix/mat3";
 import * as quat from "gl-matrix/src/gl-matrix/quat";
 import * as vec3 from "gl-matrix/src/gl-matrix/vec3";
 import * as glMatrix from "gl-matrix/src/gl-matrix/common";
@@ -6,6 +7,8 @@ import * as glMatrix from "gl-matrix/src/gl-matrix/common";
 import * as hitTestUtils from './HitTestUtils.js';
 
 import EventTarget from 'webxr-polyfill/src/lib/EventTarget';
+import XRAnchor from '../extensions/XRAnchor';
+import XRAnchorOffset from '../extensions/XRAnchorOffset';
 
 import base64 from "../lib/base64-binary.js";
 
@@ -61,13 +64,19 @@ export default class ARKitWrapper extends EventTarget {
 		 * @private
 		 */
 		this._viewMatrix = new Float32Array(16);
+		this._cameraTransform = new Float32Array(16)
 		/**
 		 * The list of planes coming from ARKit.
 		 * @type {Map<number, ARPlane}
 		 * @private
 		 */
 		this._planes = new Map();
+
+		/* other anchors from ARKit.  Faces, images, results of hit testing. */
 		this._anchors = new Map();
+
+		/* synthetic anchors, currently created from hit tests relative to other anchors */
+		this._anchorOffsets = new Map();
 
 		this._timeOffsets = []
 		this._timeOffset = 0;
@@ -219,7 +228,7 @@ export default class ARKitWrapper extends EventTarget {
 	returns the key's value or null if it doesn't exist or if a key is not specified it returns all data
 	*/
 	getData(key=null){
-		if (key === null){
+		if (!key){
 			return this._rawARData
 		}
 		if(this._rawARData && typeof this._rawARData[key] !== 'undefined'){
@@ -242,7 +251,7 @@ export default class ARKitWrapper extends EventTarget {
 			return null
 		}
 		const objects = this.getKey('objects')
-		if(objects === null) return null
+		if(!objects) return null
 		for(const object of objects){
 			if(object.uuid === uuid){
 				return object
@@ -329,14 +338,14 @@ export default class ARKitWrapper extends EventTarget {
 
 
 	/*
-	Sends an addAnchor message to ARKit
-	Returns a promise that returns:
-	{
-		uuid - the anchor's uuid,
-		transform - anchor transformation matrix
-	}
+		Sends an addAnchor message to ARKit
+		Returns a promise that returns:
+		{
+			uuid - the anchor's uuid,
+			transform - anchor transformation matrix
+		}
 	*/
-    addAnchor(uid, transform){
+  addAnchor(uid, transform){
 		return new Promise((resolve, reject) => {
 			if (!this._isInitialized){
 				reject(new Error('ARKit is not initialized'));
@@ -350,9 +359,85 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
+	createAnchor(anchorInWorldMatrix) {
+		return new Promise((resolve, reject) => {
+			var anchor = new XRAnchor(anchorInWorldMatrix)
+			this.addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
+				var _anchor = this._anchors.get(detail.uuid);
+				if(!_anchor){
+					// need to get the data in eye-level reference frame
+					this._anchors.set(detail.uuid, {
+						id: detail.uuid,
+						object: anchor
+					});
+				}else{
+					anchor = _anchor
+					anchor.modelMatrix = detail.transform;
+				}
+
+				resolve(anchor)
+			}).catch((...params) => {
+				console.error('could not create anchor', ...params)
+				reject()
+			})
+		});
+	}
+
+	addAnchorFromHit(hit) {
+		return new Promise((resolve, reject) => {
+			if (hit.anchor_transform) {
+				// Use the first hit to create an XRAnchorOffset, creating the ARKit XRAnchor as necessary
+				let anchor = this._anchors.get(hit.uuid)
+				if(!anchor){
+					anchor = this._planes.get(hit.uuid)
+
+					if (!anchor) {
+						anchor = new XRAnchor(hit.anchor_transform, hit.uuid)
+						console.log('created dummy anchor (for plane) from hit test')
+						// mark this as possibly needing replacement
+						anchor.placeholder = true;
+						this._anchors.set(hit.uuid, anchor)
+					}
+				}
+
+				// const offsetPosition = [
+				// 	hit.world_transform[12] - hit.anchor_transform[12],
+				// 	hit.world_transform[13] - hit.anchor_transform[13],
+				// 	hit.world_transform[14] - hit.anchor_transform[14]
+				// ]
+				// const worldRotation = quat.fromMat3(quat.create(), mat3.fromMat4(mat3.create(), hit.world_transform))
+				// const q = quat.create();
+				// const inverseAnchorRotation = quat.invert(q, quat.fromMat3(q, mat3.fromMat4(mat3.create(), hit.anchor_transform)))
+				// const offsetRotation = quat.multiply(q, worldRotation, inverseAnchorRotation)
+				// const offset = mat4.fromRotationTranslation(mat4.create(), offsetRotation, offsetPosition)
+				const wt = mat4.multiply(mat4.create(), hit.anchor_transform, hit.local_transform)
+				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform)
+				resolve(anchorOffset)
+			} else {
+				let anchor = this._anchors.get(hit.uuid)
+				// it is unclear WHY there would already be an anchor for this, since any hit
+				// on an existing anchor is likely a plane (or other object eventually) which should result
+				// in an offset from that existing anchor, the case above.  This case should happen if we
+				// say we could hit feature points, and that is what is returned, so there would just be 
+				// a world location that isn't an anchor.  
+				if(!anchor){
+					anchor = new XRAnchor(hit.world_transform, hit.uuid)
+					console.log('created dummy anchor (not a plane) from hit test')
+					// mark this as possibly needing replacement
+					anchor.placeholder = true;
+					this._anchors.set(hit.uuid, anchor)
+				} else {
+					console.log('hit test resulted in a hit on an existing anchor, without an offset')
+				}
+				resolve(anchor)
+			}
+		})
+	}
+
 	removeAnchor(uid) {
 		window.webkit.messageHandlers.removeAnchors.postMessage([uid])
 	}
+
 
 	/*
 	 * ask for an image anchor.
@@ -361,7 +446,7 @@ export default class ARKitWrapper extends EventTarget {
 	 * Supply the image in an ArrayBuffer, typedArray or ImageData
 	 * width and height are in meters 
 	 */
-    createImageAnchor(uid, buffer, width, height, physicalWidthInMeters) {
+  createImageAnchor(uid, buffer, width, height, physicalWidthInMeters) {
 		return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -376,7 +461,7 @@ export default class ARKitWrapper extends EventTarget {
                 imageWidth: width,
                 imageHeight: height,
                 physicalWidth: physicalWidthInMeters,
-				callback: this._createPromiseCallback('createImageAnchor', resolve)
+								callback: this._createPromiseCallback('createImageAnchor', resolve)
             })
 		})
 	}
@@ -598,53 +683,139 @@ export default class ARKitWrapper extends EventTarget {
 		}
 
 	*/
+	_createOrUpdateAnchorObject(element) {
+		if(element.plane_center){
+			var plane = this._planes.get(element.uuid);
+			var anchor = this._anchors.get(element.uuid);
+
+			if(!plane){
+				var planeObject = new XRPlaneAnchor(element.transform,
+					element.uuid,
+					element.plane_center,
+					[element.plane_extent.x, element.plane_extent.z],
+					element.plane_alignment,
+					element.geometry)
+
+				// check if we created a fake anchor for this as a result of hit testing
+				if (anchor) {
+					try {
+						anchor.dispatchEvent("replaceAnchor",
+							new CustomEvent("replaceAnchor", {
+								source: anchor,
+								detail: plane
+							})
+						)
+					} catch(e) {
+							console.error('replaceAnchor event error', e)
+					}
+					console.log('replaced dummy anchor created from hit test with plane')
+					this._anchors.delete(element.uuid)
+				} 
+
+				this._planes.set(element.uuid, {
+					id: element.uuid,
+					// center: element.plane_center,
+					// extent: [element.plane_extent.x, element.plane_extent.z],
+					// modelMatrix: element.transform,
+					// alignment: element.plane_alignment,
+					object: planeObject
+				});
+				element.object = planeObject
+			} else {
+				// plane.center = element.plane_center
+				// plane.extent[0] = element.plane_extent.x
+				// plane.extent[1] = element.plane_extent.y
+				// plane.modelMatrix = element.transform
+				// plane.alignment = element.plane_alignment
+				// plane.geometry = element.geometry
+				plane.object.updatePlaneData(element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry)
+				plane.object.modelMatrix = element.transform
+				plane.object.notifyOfUpdate();
+				element.object = plane.object
+			}
+		}else{
+			anchor = this._anchors.get(element.uuid);
+
+			if(!anchor || anchor.placeholder){
+				let anchorObject
+				switch (element.type) {
+					case ARKitWrapper.ANCHOR_TYPE_FACE:
+						anchorObject = new XRFaceAnchor(element.transform, element.uuid, element.geometry, element.blendShapes)
+						break
+					case ARKitWrapper.ANCHOR_TYPE_ANCHOR:
+						anchorObject = new XRAnchor(element.transform, element.uuid)
+						break
+					case ARKitWrapper.ANCHOR_TYPE_IMAGE:
+						anchorObject = new XRImageAnchor(element.transform, element.uuid)
+						break
+				}
+
+				// if there is an old anchor, that was a placeholder, replace it
+				if (anchor) {
+					try {
+						anchor.dispatchEvent("replaceAnchor",
+							new CustomEvent("replaceAnchor", {
+								source: anchor,
+								detail: anchorObject
+							})
+						)
+					} catch(e) {
+							console.error('replaceAnchor event error', e)
+					}
+					console.log('replaced dummy anchor created from hit test with new anchor')
+				}
+				this._anchors.set(element.uuid, {
+					id: element.uuid,
+					object: anchorObject
+					// modelMatrix: element.transform
+				});
+				element.object = anchorObject
+			} else {
+				switch (element.type) {
+					case ARKitWrapper.ANCHOR_TYPE_FACE:
+						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes)
+						break
+				}
+				anchor.object.modelMatrix = element.transform
+				anchor.object.notifyOfUpdate();
+				element.object = anchor.object
+			}
+		}
+	}
 
 	_onWatch(data){
 		this._rawARData = data
-		try {
-			this.dispatchEvent(
-				ARKitWrapper.WATCH_EVENT, 
-				new CustomEvent(ARKitWrapper.WATCH_EVENT, {
-					source: this,
-					detail: this._rawARData
-				})
-			)
-        } catch(e) {
-            console.error('WATCH_EVENT event error', e)
-        }
+		var plane, anchor
+
 		this._timestamp = this._adjustARKitTime(data.timestamp)
 		this._lightIntensity = data.light_intensity;
-		this._viewMatrix = data.camera_view;
-		this._projectionMatrix = data.projection_camera;
+		mat4.copy(this._cameraTransform, data.camera_transform);
+		mat4.copy(this._viewMatrix, data.camera_view);
+		mat4.copy(this._projectionMatrix, data.projection_camera);
 		this._worldMappingStatus = data.worldMappingStatus;
 
 		if(data.newObjects.length){
 			for (let i = 0; i < data.newObjects.length; i++) {
 				const element = data.newObjects[i];
-				if(element.plane_center){
-					this._planes.set(element.uuid, {
-						id: element.uuid,
-						center: element.plane_center,
-						extent: [element.plane_extent.x, element.plane_extent.z],
-						modelMatrix: element.transform,
-						alignment: element.plane_alignment
-					});
-				}else{
-					this._anchors.set(element.uuid, {
-						id: element.uuid,
-						modelMatrix: element.transform
-					});
-				}
+				this._createOrUpdateAnchorObject(element)
 			}
 		}
 
 		if(data.removedObjects.length){
 			for (let i = 0; i < data.removedObjects.length; i++) {
 				const element = data.removedObjects[i];
-				if(this._planes.get(element)){
+				const plane = this._planes.get(element)
+				if(plane){
+					plane.notifyOfRemoval();
 					this._planes.delete(element);
 				}else{
-					this._anchors.delete(element);
+					const anchor = this._anchors.get(element)
+					if (anchor) {
+						anchor.notifyOfRemoval();
+						this._anchors.delete(element);
+					} else {
+						console.error("app signalled removal of non-existant anchor/plane")
+					}
 				}
 			}
 		}
@@ -652,36 +823,22 @@ export default class ARKitWrapper extends EventTarget {
 		if(data.objects.length){
 			for (let i = 0; i < data.objects.length; i++) {
 				const element = data.objects[i];
-				if(element.plane_center){
-					var plane = this._planes.get(element.uuid);
-					if(!plane){
-						this._planes.set(element.uuid, {
-							id: element.uuid,
-							center: element.plane_center,
-							extent: [element.plane_extent.x, element.plane_extent.z],
-							modelMatrix: element.transform,
-							alignment: element.plane_alignment
-						});
-					} else {
-						plane.center = element.plane_center;
-						plane.extent[0] = element.plane_extent.x
-						plane.extent[1] = element.plane_extent.y
-						plane.modelMatrix = element.transform;
-						plane.alignment = element.plane_alignment
-					}
-				}else{
-					var anchor = this._anchors.get(element.uuid);
-					if(!anchor){
-						this._anchors.set(element.uuid, {
-							id: element.uuid,
-							modelMatrix: element.transform
-						});
-					}else{
-						anchor.modelMatrix = element.transform;
-					}
-				}
+				this._createOrUpdateAnchorObject(element)
 			}
 		}
+
+		try {
+			this.dispatchEvent(
+				ARKitWrapper.WATCH_EVENT, 
+				new CustomEvent(ARKitWrapper.WATCH_EVENT, {
+					source: this,
+					detail: this
+				})
+			)
+		} catch(e) {
+				console.error('WATCH_EVENT event error', e)
+		}
+
 	}
 
 	/*

@@ -77,6 +77,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	onBaseLayerSet(sessionId, layer){
 		this._sessions.get(sessionId).baseLayer = layer // XRWebGLLayer
 		this._wrapperDiv.appendChild(layer.context.canvas)
+
+		layer.context.canvas.style.width = "100%";
+		layer.context.canvas.style.height = "100%";
+		layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
+		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
 	}
 
 	requestAnimationFrame(callback){
@@ -110,7 +115,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			case 'eye-level':
 				return this._eyeLevelMatrix
 			case 'stage':
-				return this._stageMatrix
+				//return this._stageMatrix
+				throw new Error('stage not supported', type)
 			default:
 				throw new Error('Unsupported frame of reference type', type)
 		}
@@ -171,7 +177,14 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		return null
 	}
 
-	onWindowResize(){}
+	onWindowResize(){
+		this._sessions.forEach((value, key) => {
+			var layer = value.baseLayer
+
+			layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
+			layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
+		})
+	}
 }
 
 let SESSION_ID = 100
@@ -190,19 +203,21 @@ class ARWatcher extends ARKitWatcher {
 		this._arKitDevice = arKitDevice
 	}
 	handleARKitUpdate(event){
-		const cameraTransformMatrix = this._arKitWrapper.getData('camera_transform')
-		if (cameraTransformMatrix) {
-			this._arKitDevice.setBaseViewMatrix(cameraTransformMatrix)
-		} else {
-			console.log('no camera transform', this._arKitWrapper.rawARData)
-		}
+		// const cameraTransformMatrix = this._arKitWrapper.getData('camera_transform')
+		// if (cameraTransformMatrix) {
+		// 	this._arKitDevice.setBaseViewMatrix(cameraTransformMatrix)
+		// } else {
+		// 	console.log('no camera transform', this._arKitWrapper.rawARData)
+		// }
+		this._arKitDevice.setBaseViewMatrix(this._arKitWrapper._cameraTransform)
 
-		const cameraProjectionMatrix = this._arKitWrapper.getData('projection_camera')
-		if(cameraProjectionMatrix){
-			this._arKitDevice.setProjectionMatrix(cameraProjectionMatrix)
-		} else {
-			console.log('no projection camera', this._arKitWrapper.rawARData)
-		}
+		// const cameraProjectionMatrix = this._arKitWrapper.getData('projection_camera')
+		// if(cameraProjectionMatrix){
+		// 	this._arKitDevice.setProjectionMatrix(cameraProjectionMatrix)
+		// } else {
+		// 	console.log('no projection camera', this._arKitWrapper.rawARData)
+		// }
+		this._arKitDevice.setProjectionMatrix(this._arKitWrapper._projectionMatrix)
 	}
 	handleOnError(...args){
 		console.error('ARKit error', ...args)

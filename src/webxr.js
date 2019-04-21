@@ -2,7 +2,9 @@ import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill'
 import {PRIVATE} from 'webxr-polyfill/src/api/XRFrameOfReference'
 
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
+import * as mat3 from 'gl-matrix/src/gl-matrix/mat3'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
+import * as quat from 'gl-matrix/src/gl-matrix/quat'
 
 import XRHitResult from './extensions/XRHitResult.js'
 
@@ -14,7 +16,8 @@ const PI_OVER_180 = Math.PI / 180
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
-    this.xr = new XR(new XRDevice(new ARKitDevice(this.global)))
+	  var _arKitDevice = new ARKitDevice(this.global)
+    this.xr = new XR(new XRDevice(_arKitDevice))
     Object.defineProperty(this.global.navigator, 'xr', {
       value: this.xr,
       configurable: true,
@@ -68,6 +71,10 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 		_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
 			if(hits.length === 0) resolve([])
 			// Hit results are in the tracker (aka eye-level) coordinate system, so transform them back to head-model since the passed origin and results must be in the same coordinate system
+
+			// uncomment if you want one hit, and get rid of map below
+			// const hit = _arKitWrapper.pickBestHit(hits)
+
 			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
 				const csTransform = eyeLevelFrameOfReference.getTransformTo(coordinateSystem)
 				//console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
@@ -75,7 +82,7 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 					const hitInHeadMatrix = mat4.multiply(mat4.create(), hit.world_transform, csTransform)
 					//console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
 					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
-					return new XRHitResult(hitInHeadMatrix)
+					return new XRHitResult(hitInHeadMatrix, hit)
 				}))
 			})
 		}).catch((...params) => {
@@ -84,6 +91,95 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 		})
 	})
 }
+
+async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
+	// value is either
+	//  	Float32Array modelMatrix, 
+	//		XRHitResult hitResult
+	// XRFrameOfReference frameOfReference
+	  if (value instanceof XRHitResult) {
+			return _arKitWrapper.addAnchorFromHit(value._hit)
+			// const hit = value._hit;
+			// // if it's a plane
+			// if (hit.anchor_transform) {
+			// 	// Use the first hit to create an XRAnchorOffset, creating the ARKit XRAnchor as necessary
+
+			// 	let anchor = this._getAnchor(hit.uuid)
+			// 	if(anchor === null){
+			// 		anchor = new XRAnchor(hit.anchor_transform, hit.uuid)
+			// 		this._setAnchor(anchor)
+			// 	}
+
+			// 	const offsetPosition = [
+			// 		hit.world_transform[12] - hit.anchor_transform[12],
+			// 		hit.world_transform[13] - hit.anchor_transform[13],
+			// 		hit.world_transform[14] - hit.anchor_transform[14]
+			// 	]
+			// 	const worldRotation = quat.fromMat3(quat.create(), mat3.fromMat4(mat3.create(), hit.world_transform))
+			// 	const q = quat.create();
+			// 	const inverseAnchorRotation = quat.invert(q, quat.fromMat3(q, mat3.fromMat4(mat3.create(), hit.anchor_transform)))
+			// 	const offsetRotation = quat.multiply(q, worldRotation, inverseAnchorRotation)
+			// 	const offset = mat4.fromRotationTranslation(mat4.create(), offsetRotation, offsetPosition)
+			// 	const anchorOffset = new XRAnchorOffset(anchor, offset)
+			// 	return anchorOffset
+			// } else {
+			// 	const anchor = new XRAnchor(hit.world_transform, hit.uuid)
+			// 	this._setAnchor(anchor)
+			// 	return anchor
+			// }
+
+		} else if (value instanceof Float32Array) {
+			return new Promise((resolve, reject) => {
+				// need to get the data in eye-level reference frame.  In this polyfill,
+				// 
+				this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
+					const transform = frameOfReference.getTransformTo(eyeLevelFrameOfReference)
+					const anchorInWorldMatrix = mat4.multiply(mat4.create(), value, transform)
+
+					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(anchor => {
+						resolve(anchor)
+
+					// var anchor = new XRAnchor(anchorInWorldMatrix)
+					// _arKitWrapper.addAnchor(anchor.uid, anchor.modelMatrix()).then(detail => { 
+					// 	anchor.modelMatrix = detail.transform
+					// 	this._setAnchor(anchor)
+					// 	resolve(anchor)
+					}).catch((...params) => {
+						console.error('could not create anchor', ...params)
+						reject()
+					})
+				}).catch((...params) => {
+					console.error('could not create eye-level frame of reference', ...params)
+					reject()
+				})
+			});
+		}	else {
+			console.error('invalid value passed to addAnchor', value)
+			reject()
+		}
+}
+
+async function /*Promise<XRAnchor>*/ _removeAnchor(anchor) {
+	return new Promise((resolve, reject) => {
+		_arKitWrapper.removeAnchor(anchor);
+		resolve();
+	})
+}
+
+// function _getAnchor(uid) {
+// 	if (!this._anchors) { return null}
+// 	return this._anchors.get(uid) || null
+// }
+
+// function _setAnchor(anchor) {
+// 	if (!this._anchors) { this._anchors = new Map()	}
+// 	this._anchors.set(anchor.uid, anchor)
+// }
+
+// function _deleteAnchor(anchor){
+// 	if (!this._anchors) { return }
+// 	this._anchors.delete(anchor.uid)
+// }
 
 /**
 Take a vec3 direction vector through the screen and return normalized x,y screen coordinates
@@ -106,12 +202,16 @@ function _installExtensions(){
 
 	if(window.XRSession){
 		XRSession.prototype.requestHitTest = _xrSessionRequestHitTest
+		XRSession.prototype.addAnchor = _addAnchor
+		// XRSession.prototype._setAnchor = _setAnchor
+		// XRSession.prototype._getAnchor = _getAnchor
+		// XRSession.prototype._deleteAnchor = _deleteAnchor
+		XRSession.prototype.removeAnchor = _removeAnchor
 	}
+	
 	if(window.XRFrameOfReference){
 		XRFrameOfReference.prototype.getTransformTo = _xrFrameOfReferenceGetTransformTo
 	}
 }
 
 _installExtensions()
-
-

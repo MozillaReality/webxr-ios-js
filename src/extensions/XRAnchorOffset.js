@@ -5,35 +5,62 @@ import XRAnchor from './XRAnchor.js'
 /*
 XRAnchorOffset represents a pose in relation to an XRAnchor
 */
-export default class XRAnchorOffset {
-	constructor(anchorUID, poseMatrix=null){
-		this._anchorUID = anchorUID
+export default class XRAnchorOffset extends XRAnchor {
+	constructor(anchor, offset=null){
+		super(offset)
+		this._anchor = anchor
 		this._tempArray = new Float32Array(16)
-		this._poseMatrix = poseMatrix || mat4.create()
+		this._offsetMatrix = mat4.create()
+		if (offset) {
+			mat4.copy(this._offsetMatrix, offset)
+		}
+		mat4.multiply(this._transform, anchor.modelMatrix, this._offsetMatrix)
+
+		this._handleAnchorUpdateListener = this._handleAnchorUpdate.bind(this)
+		this._notifyOfRemovalListener = this.notifyOfRemoval.bind(this)
+		this._handleReplaceAnchorListener = this._handleReplaceAnchor.bind(this)
+
+		anchor.addEventListener("update", this._handleAnchorUpdateListener)
+		// just pass removal up the chain
+		anchor.addEventListener("removal", this._notifyOfRemovalListener)
+
+		anchor.addEventListener("replaceAnchor", this._handleReplaceAnchorListener)
 	}
 
-	get anchorUID(){ return this._anchorUID }
+	// when we create an anchorOffset from a hitTest, the iOS app may not yet have
+	// sent the underlying Anchor up in the frame update (i.e., could be a race condition if
+	// the hit and plane are created at the same time, perhaps?)
+	// so a dummy anchor will be created, and if/when a real one shows up with the same UID
+	// we'll update this node
+	_handleReplaceAnchor(detail) {
+		this._anchor = detail
+
+		this._anchor.deleteEv("update", this._handleAnchorUpdateListener)
+		this._anchor.addEventListener("removal", this._notifyOfRemovalListener)
+		this._anchor.addEventListener("replaceAnchor", this._handleReplaceAnchorListener)
+
+		this._anchor.addEventListener("update", this._handleAnchorUpdateListener)
+		this._anchor.addEventListener("removal", this._notifyOfRemovalListener)
+		this._anchor.addEventListener("replaceAnchor", this._handleReplaceAnchorListener)
+	}
+
+	_handleAnchorUpdate() {
+		mat4.multiply(this._tempArray, anchor.modelMatrix, this._offsetMatrix)
+		this.modelMatrix = this._tempArray
+		// pass update up the chain
+		this.notifyOfRemoval()
+	}
+
+	get modelMatrix () { return this._transform }
+	set modelMatrix (transform) { 
+		throw new Error("can't set the modelMatrix on XRAnchorOffset")
+	}
+
+	get anchor(){ return this._anchor }
 
 	/* A Float32Array(16) representing a column major affine transform matrix */
-	get poseMatrix(){ return this._poseMatrix }
-	set poseMatrix(array16){
-		mat4.copy(this._poseMatrix, array16)
-	}
-
-	/* returns a Float32Array(3) representing an x, y, z position from this.poseMatrix */
-	get position(){
-		return mat4.getTranslation(new Float32Array(3), this._poseMatrix)
-	}
-
-	/* returns a Float32Array(4) representing x, y, z, w of a quaternion from this.poseMatrix */
-	get orientation(){
-		return mat4.getRotation(new Float32Array(4), this._poseMatrix)
-	}
-
-	/* Return a transform matrix that is offset by this XRAnchorOffset.poseMatrix relative to coordinateSystem */
-	getOffsetTransform(anchor, coordinateSystem){
-		const transformToAnchor = coordinateSystem.getTransformTo(anchor)
-		if(transformToAnchor === null) return null
-		return mat4.multiply(this._tempArray, this._poseMatrix, transformToAnchor)
+	get offsetMatrix(){ return this._offsetMatrix }
+	set offsetMatrix(array16){
+		mat4.copy(this._offsetMatrix, array16)
 	}
 }
