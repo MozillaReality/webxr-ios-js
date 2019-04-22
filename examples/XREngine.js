@@ -170,7 +170,7 @@ export default class XREngine {
 	}
 
 	_handleAnchorUpdate(details) {
-		const anchor = event.source
+		const anchor = details.source
 		const anchoredNode = this._anchoredNodes.get(anchor.uid)
 		if (anchoredNode) {
 			const node = anchoredNode.node

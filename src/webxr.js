@@ -79,7 +79,7 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 				const csTransform = eyeLevelFrameOfReference.getTransformTo(coordinateSystem)
 				//console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
 				resolve(hits.map(hit => {
-					const hitInHeadMatrix = mat4.multiply(mat4.create(), hit.world_transform, csTransform)
+					const hitInHeadMatrix = mat4.multiply(mat4.create(), csTransform, hit.world_transform)
 					//console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
 					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
 					return new XRHitResult(hitInHeadMatrix, hit)
@@ -134,7 +134,7 @@ async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
 				// 
 				this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
 					const transform = frameOfReference.getTransformTo(eyeLevelFrameOfReference)
-					const anchorInWorldMatrix = mat4.multiply(mat4.create(), value, transform)
+					const anchorInWorldMatrix = mat4.multiply(mat4.create(), transform, value)
 
 					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(anchor => {
 						resolve(anchor)

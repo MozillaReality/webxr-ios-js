@@ -14,7 +14,7 @@
 		<div onclick="hideMe(this)" id="description">
 			<h2>Anchored Boxes</h2>
 			<h5>(click to dismiss)</h5>
-			<p>Anchor boxes to XRAnchors created from pose matrices.</p>
+			<p>Anchor boxes to XRAnchors created in front the where the user taps on the screen.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
@@ -36,7 +36,9 @@
 			
 			// temporary working variables
 			const workingMatrix1 = mat4.create()
+			const workingMatrix2 = mat4.create()
 			const identity = mat4.identity(mat4.create())
+			const upY = vec3.fromValues(0,1,0)
 
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
@@ -82,8 +84,13 @@
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
 																							engine.camera.projectionMatrix)
 
-				mat4.fromTranslation(workingMatrix1, direction)
+				// set up the local transformation to be positioned relative to the camera along
+				// the ray, but also oriented along the ray direction
+				mat4.targetTo(workingMatrix1, origin, direction, upY)
+				mat4.fromTranslation(workingMatrix2, direction)
+				mat4.multiply(workingMatrix1, workingMatrix2, workingMatrix1)
 
+				// create an anchor in front of the phone
 				session.addAnchor(workingMatrix1, headFrameOfReference).then(anchor => {					
 					engine.addAnchoredNode(anchor, createSceneGraphNode())					
 				}).catch(err => {
