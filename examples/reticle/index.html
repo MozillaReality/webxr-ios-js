@@ -1,6 +1,7 @@
-<html>
+
+  <html>
 	<head>
-		<title>Hit test example</title>
+		<title>Reticle example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three.min.js"></script>
@@ -12,12 +13,19 @@
 				window.hideMe = function(elem) { elem.style.display = 'none' }
 		</script>
 		<div onclick="hideMe(this)" id="description">
-			<h2>Hit Test Anchors</h2>
+			<h2>Reticle</h2>
 			<h5>(click to dismiss)</h5>
-			<p>Anchor boxes by create XRAnchors from XRHitTest results.</p>
+			<p>Place a reticle on surfaces.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
+			/*
+			Reticle Example shows how to find surfaces or other features and place reticle relative to them.
+
+			In a production application, you would likely want to request world geometry, rather than only 
+			using low level hit testing, and fall back to this method if the user declines to provide 
+			real world geometry access.
+			*/
 
 			// some dependencies and utilities
 			import * as mat4 from '../libs/gl-matrix/mat4.js'
@@ -35,8 +43,16 @@
 			let engine = null
 			
 			// temporary working variables
-			const workingMatrix1 = mat4.create()
+			const workingMatrix = mat4.create()
 			const identity = mat4.identity(mat4.create())
+			var savedOrigin = [0,0,0]
+			var savedDirection = [0,0,-1]
+			var reticleParent = new THREE.Object3D()
+			var reticle = null
+			
+			var reticleTrackedColor = new THREE.MeshBasicMaterial({ color: '#DDFFDD' })
+			var reticleNotTrackedColor = new THREE.MeshBasicMaterial({ color: '#FF6666' })
+			var requestNextHit = true
 
 			function initializeScene(){
 				engine.addAmbientLight()
@@ -46,43 +62,72 @@
 				// for debugging by uncommenting these lines
 				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
 				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+				
+				reticle = new THREE.Mesh(
+					new THREE.RingGeometry(0.04, 0.05, 36, 64),
+					reticleTrackedColor
+				)
+
+				reticle.geometry.applyMatrix(new THREE.Matrix4().makeRotationX(THREE.Math.degToRad(-90)))
+				reticleParent.add(reticle)
+
+				// var color = new THREE.Color( 0xffffff );
+        		// color.setHex( Math.random() * 0xffffff );
+				// const box = new THREE.Mesh(
+				// 	new THREE.BoxBufferGeometry(0.025, 0.025, 0.025),
+				// 	new THREE.MeshLambertMaterial({ color: color })
+				// )
+				// reticleParent.add(box)
+
+				reticleParent.matrixAutoUpdate = false
+				reticleParent.visible = false
+				engine.scene.add(reticleParent)
 			}
 			
+			// handle hit testing slightly differently than other samples, since we're doing
+			// it per frame.  The "boiler plate" code below is slightly different, setting 
+			// requestNextHit on tap instead of executing the hit test.  The custom XREngineHits
+			// does a hit test each frame if the previous one has resolved
 			function handleHitResults(hits) {
 				let size = 0.05;
-				let hit = hits[0]
+				if (hits.length > 0) {
+					let hit = hits[0]
 
-				session.addAnchor(hit, headFrameOfReference).then(anchor => {					
-					engine.addAnchoredNode(anchor, createSceneGraphNode())
-				}).catch(err => {
-					console.error('Error adding anchor', err)
-				})
+					// convert hit matrices from head to eye level coordinate systems
+					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
+					mat4.multiply(workingMatrix, csTransform, hit.hitMatrix)
+
+					const node = reticleParent
+					node.matrix.fromArray(workingMatrix)
+					reticleParent.visible = true   // it starts invisible
+					reticle.material = reticleTrackedColor
+
+					node.updateMatrixWorld(true)
+				} else {
+					reticle.material = reticleNotTrackedColor
+				}
+				requestNextHit = true
 			}
 
-			// Creates a box used to indicate the location of an anchor offset
-			function createSceneGraphNode(){
-				let group = new THREE.Group()
-				let geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1)
-				var color = new THREE.Color( 0xffffff );
-        		color.setHex( Math.random() * 0xffffff );
-				let material = new THREE.MeshPhongMaterial({ color: color })
-				let mesh = new THREE.Mesh(geometry, material)
-	
-				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
-				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
+			class XREngineHits extends XREngine {
+				endFrame(){
+					if (requestNextHit) {
+						requestNextHit = false
 
-				mesh.position.set(0, 0.05, 0)
-				outlineMesh.position.set(0, 0.05, 0);
-				outlineMesh.scale.multiplyScalar(1.05);
-
-				group.add(mesh)
-				group.add(outlineMesh)
-				return group
+						session.requestHitTest(savedOrigin, savedDirection, headFrameOfReference)
+							.then(handleHitResults)
+							.catch(err => {
+								console.error('Error testing hits', err)
+							})
+					}
+				}
 			}
 
 			////////////////////////////////////////////////////
 			////////////////////////////////////////////////////
 			// BOILER PLATE.  Can you feel the plates boiling?
+			//
+			// There are slight differences between examples but largely this code is similar
 			//
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
@@ -96,7 +141,6 @@
 			navigator.xr.requestDevice().then(xrDevice => {
 				device = xrDevice
 			}).catch(err => {
-				console.error('Error', err)
 			})
 
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
@@ -107,10 +151,6 @@
 				switch(eventName){
 					case 'normalized-touch':
 						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
-							.then(handleHitResults)
-							.catch(err => {
-								console.error('Error testing hits', err)
-							})
 						break
 					default:
 						console.error('unknown xr input event', eventName, details)
@@ -121,17 +161,19 @@
 			function hitTestWithScreenCoordinates(normalizedX, normalizedY){
 				if(session === null){
 					console.log('No session for hit testing')
-					return Promise.reject()
+					return
 				}
 				if(headFrameOfReference === null){
 					console.log('No frame of reference')
-					return Promise.reject()
+					return
 				}
 				// Convert the screen coordinates into head-model origin/direction for hit testing
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
 																							engine.camera.projectionMatrix)
+				savedOrigin = origin
+				savedDirection = direction
 
-				return session.requestHitTest(origin, direction, headFrameOfReference)
+				requestNextHit = true
 			}
 
 			/////////////////////
@@ -176,7 +218,8 @@
 
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
-				engine = new XREngine(canvas, glContext)
+				// Our custom engine class does hit testing at the end of each rAF 
+				engine = new XREngineHits(canvas, glContext)
 
 				// head-model is the coordinate system that tracks the position of the display
 				session.requestFrameOfReference('head-model').then(frameOfReference =>{

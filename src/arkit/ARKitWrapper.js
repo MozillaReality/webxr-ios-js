@@ -49,6 +49,7 @@ export default class ARKitWrapper extends EventTarget {
 
 		this._deviceId = null
 		this._isWatching = false
+		this._waitingForFirstWatch = null
 		this._isInitialized = false
 		this._rawARData = null
 
@@ -439,10 +440,18 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
-	removeAnchor(uid) {
-		window.webkit.messageHandlers.removeAnchors.postMessage([uid])
+	removeAnchor(anchor) {
+		if(this._anchors.get(anchor.uid)) {
+			this._anchors.delete(anchor.uid)
+		}
+		if(this._planes.get(anchor.uid)) {
+			this._planes.delete(anchor.uid)
+		}
+		// only remove real ARKit anchors from native code
+		if (!(anchor.placeholder || anchor instanceof XRAnchorOffset)) { 
+			window.webkit.messageHandlers.removeAnchors.postMessage([anchor.uid])
+		}
 	}
-
 
 	/*
 	 * ask for an image anchor.
@@ -540,10 +549,18 @@ export default class ARKitWrapper extends EventTarget {
 				resolve();
 				return;
 			}
+
 			console.log('----STOP');
-			window.webkit.messageHandlers.stopAR.postMessage({
-				callback: this._createPromiseCallback('stop', resolve)
-			})
+			if (!this._waitingForFirstWatch) {
+				window.webkit.messageHandlers.stopAR.postMessage({
+					callback: this._createPromiseCallback('stop', reject("session hadn't completed startup"))
+				})
+				this._waitingForFirstWatch = null
+			} else {
+				window.webkit.messageHandlers.stopAR.postMessage({
+					callback: this._createPromiseCallback('stop', resolve)
+				})
+			}
 		})
 	}
 	

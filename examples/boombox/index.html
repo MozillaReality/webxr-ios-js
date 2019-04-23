@@ -1,20 +1,21 @@
 <html>
 	<head>
-		<title>Hit test example</title>
+		<title>Boombox</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three.min.js"></script>
+		<script src="../libs/three-gltf-loader.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
 		<script>	
-				window.hideMe = function(elem) { elem.style.display = 'none' }
+			window.hideMe = function(elem) { elem.style.display = 'none' }
 		</script>
 		<div onclick="hideMe(this)" id="description">
-			<h2>Hit Test Anchors</h2>
+			<h2>Boombox</h2>
 			<h5>(click to dismiss)</h5>
-			<p>Anchor boxes by create XRAnchors from XRHitTest results.</p>
+			<p>Shows a boombox in a Panoramic photo environment.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
@@ -24,7 +25,6 @@
 			import * as vec3 from '../libs/gl-matrix/vec3.js'
 
 			import XREngine from "../XREngine.js"
-			import XRInputManager from "../XRInputManager.js"
 
 			let device = null
 			let session = null
@@ -33,10 +33,13 @@
 			let layer = null
 			let frameOfReference = null
 			let engine = null
-			
+			let envMap = null
+
 			// temporary working variables
 			const workingMatrix1 = mat4.create()
 			const identity = mat4.identity(mat4.create())
+
+			const startGroup = new THREE.Group()
 
 			function initializeScene(){
 				engine.addAmbientLight()
@@ -46,41 +49,40 @@
 				// for debugging by uncommenting these lines
 				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
 				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
-			}
-			
-			function handleHitResults(hits) {
-				let size = 0.05;
-				let hit = hits[0]
 
-				session.addAnchor(hit, headFrameOfReference).then(anchor => {					
-					engine.addAnchoredNode(anchor, createSceneGraphNode())
-				}).catch(err => {
-					console.error('Error adding anchor', err)
+				engine.scene.add(startGroup)
+				engine.scene.background = new THREE.Color(0x222222)
+
+				// Create the environment map
+				const path = '../textures/Park2/'
+				const format = '.jpg'
+				envMap = new THREE.CubeTextureLoader().load([
+					path + 'posx' + format, path + 'negx' + format,
+					path + 'posy' + format, path + 'negy' + format,
+					path + 'posz' + format, path + 'negz' + format
+				])
+				envMap.format = THREE.RGBFormat
+				engine.scene.background = envMap
+
+				// Add the boom box
+				loadGLTF('../models/BoomBox/glTF-pbrSpecularGlossiness/BoomBox.gltf').then(gltf => {
+					gltf.scene.scale.set(15, 15, 15)
+					gltf.scene.position.set(0, 0, -1)
+					gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
+
+					gltf.scene.traverse(node => {
+						if (node.material && (node.material.isMeshStandardMaterial || (node.material.isShaderMaterial && node.material.envMap !== undefined))){
+							node.material.envMap = envMap
+							node.material.needsUpdate = true
+						}
+					})
+
+					startGroup.add(gltf.scene)
+				}).catch((...params) =>{
+					console.error('could not load gltf', ...params)
 				})
 			}
 
-			// Creates a box used to indicate the location of an anchor offset
-			function createSceneGraphNode(){
-				let group = new THREE.Group()
-				let geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1)
-				var color = new THREE.Color( 0xffffff );
-        		color.setHex( Math.random() * 0xffffff );
-				let material = new THREE.MeshPhongMaterial({ color: color })
-				let mesh = new THREE.Mesh(geometry, material)
-	
-				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
-				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
-
-				mesh.position.set(0, 0.05, 0)
-				outlineMesh.position.set(0, 0.05, 0);
-				outlineMesh.scale.multiplyScalar(1.05);
-
-				group.add(mesh)
-				group.add(outlineMesh)
-				return group
-			}
-
-			////////////////////////////////////////////////////
 			////////////////////////////////////////////////////
 			// BOILER PLATE.  Can you feel the plates boiling?
 			//
@@ -92,7 +94,6 @@
 				console.error('No XR context', xrCanvas)
 			}
 
-			// get the XR Device
 			navigator.xr.requestDevice().then(xrDevice => {
 				device = xrDevice
 			}).catch(err => {
@@ -101,41 +102,6 @@
 
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
 
-			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager(handleXRInput)
-			function handleXRInput(eventName, details){
-				switch(eventName){
-					case 'normalized-touch':
-						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
-							.then(handleHitResults)
-							.catch(err => {
-								console.error('Error testing hits', err)
-							})
-						break
-					default:
-						console.error('unknown xr input event', eventName, details)
-						break
-				}
-			}
-
-			function hitTestWithScreenCoordinates(normalizedX, normalizedY){
-				if(session === null){
-					console.log('No session for hit testing')
-					return Promise.reject()
-				}
-				if(headFrameOfReference === null){
-					console.log('No frame of reference')
-					return Promise.reject()
-				}
-				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
-																							engine.camera.projectionMatrix)
-
-				return session.requestHitTest(origin, direction, headFrameOfReference)
-			}
-
-			/////////////////////
-			// Session startup / shutdown
 			function handleStartSessionRequest(ev){
 				if(device === null){
 					console.error('No xr device')
@@ -181,25 +147,36 @@
 				// head-model is the coordinate system that tracks the position of the display
 				session.requestFrameOfReference('head-model').then(frameOfReference =>{
 					headFrameOfReference = frameOfReference
+
+					// eye-level is the coordinate system of the ARKit tracking system 
+					session.requestFrameOfReference('eye-level').then(frameOfReference => {
+						eyeLevelFrameOfReference = frameOfReference
+	
+						//// this TIMEOUT NEEDS TO BE REMOVED but there's a bug in requestSession
+						//// returning too fast
+						window.setTimeout(() => {
+							// add an anchor where the camera is
+							session.addAnchor(identity, headFrameOfReference).then(anchor => {			
+								engine.addAnchoredNode(anchor, startGroup)
+							}).catch(err => {
+								console.error('Error adding anchor', err)
+							})
+						}, 4000)
+						// Kick off rendering
+						session.requestAnimationFrame(handleAnimationFrame)
+					})
+					.catch(err => {
+						console.error('Error finding eye frame of reference', err)
+					})					
 				})
 				.catch(err => {
 					console.error('Error finding head frame of reference', err)
 				})
-				// eye-level is the coordinate system of the ARKit tracking system 
-				session.requestFrameOfReference('eye-level').then(frameOfReference => {
-					eyeLevelFrameOfReference = frameOfReference
-					// Kick off rendering
-					session.requestAnimationFrame(handleAnimationFrame)
-				})
-				.catch(err => {
-					console.error('Error finding eye frame of reference', err)
-				})
+				
 
 				initializeScene()
 			}
 
-			////////////////
-			// render loop			
 			function handleAnimationFrame(t, frame){
 				if(session.ended) return
 				session.requestAnimationFrame(handleAnimationFrame)

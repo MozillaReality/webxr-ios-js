@@ -1,0 +1,414 @@
+
+  <html>
+	<head>
+		<title>Spinners example</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" href="../common.css"/>
+		<script src="../libs/three.min.js"></script>
+		<script src="../libs/loaders/BinaryLoader.js"></script>
+
+		<script src="../libs/postprocessing/EffectComposer.js"></script>
+
+		<script src="../libs/shaders/ConvolutionShader.js"></script>
+		<script src="../libs/postprocessing/ShaderPass.js"></script>
+		<script src="../libs/postprocessing/MaskPass.js"></script>
+		<script src="../libs/shaders/CopyShader.js"></script>
+		<script src="../libs/shaders/FilmShader.js"></script>
+
+		<script src="../libs/postprocessing/RenderPass.js"></script>
+		<script src="../libs/postprocessing/BloomPass.js"></script>
+		<script src="../libs/postprocessing/FilmPass.js"></script>
+
+		<script module src="../../dist/webxr.js"></script>
+	</head>
+	<body>
+		<script>	
+			window.hideMe = function(elem) { elem.style.display = 'none' }
+		</script>
+		<div onclick="hideMe(this)" id="description">
+			<h2>Peoples</h2>
+			<h5>(click to dismiss)</h5>
+			<p>Place animated people on surfaces by tapping.</p>
+		</div>
+		<button type=button id=go-button>Go</button>
+		<script type=module>
+			/*
+			This is based on the THREE.js example from https://threejs.org/examples/webgl_points_dynamic.html ported to WebXR
+			*/
+
+			// some dependencies and utilities
+			import * as mat4 from '../libs/gl-matrix/mat4.js'
+			import * as vec3 from '../libs/gl-matrix/vec3.js'
+
+			import XREngine from "../XREngine.js"
+			import XRInputManager from "../XRInputManager.js"
+
+			let device = null
+			let session = null
+			let headFrameOfReference = null
+			let eyeLevelFrameOfReference = null
+			let layer = null
+			let frameOfReference = null
+			let engine = null
+			var canvas = null
+
+			// temporary working variables
+			const workingMatrix1 = mat4.create()
+			const workingMatrix2 = mat4.create()
+			const identity = mat4.identity(mat4.create())
+			const upY = vec3.fromValues(0,1,0)
+
+			var clock = new THREE.Clock()
+			var meshes = []
+			var clonemeshes = []
+			var geometries = []
+			var femaleGeometry = null
+			var maleGeometry = null
+			var composer = null
+
+			var colors = [
+				0xff4422,
+				0xff9955,
+				0xff77dd,
+				0xff7744,
+				0xff5522,
+				0xff9922,
+				0xff99ff
+			]
+
+			function initializeScene() {
+				engine.addAmbientLight()
+				engine.addDirectionalLight()
+
+				// Add a box and sphere at the origin of the eye-level coordinate system
+				// for debugging by uncommenting these lines
+				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+
+				const loader = new THREE.BinaryLoader()
+				loader.load('../models/female02/Female02_bin.js', geometry => {
+					femaleGeometry = geometry
+					geometries.push(femaleGeometry)
+				})
+				loader.load('../models/male02/Male02_bin.js', geometry => {
+					maleGeometry = geometry
+					geometries.push(maleGeometry)
+				})
+
+
+				composer = new THREE.EffectComposer(engine.renderer)
+				composer.addPass(new THREE.RenderPass(engine.scene, engine.camera))
+				composer.addPass(new THREE.BloomPass(0.75))
+				let filmPass = new THREE.FilmPass(0.5, 0.5, 1448, false)
+				filmPass.renderToScreen = true
+				composer.addPass(filmPass)
+		
+			}
+
+			////////////////////////////////
+			// custom render loop to use the compositor instead of the vanilla renderer
+			function handleAnimationFrame(t, frame){
+				if(session.ended) return
+				session.requestAnimationFrame(handleAnimationFrame)
+
+				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
+				if(!pose){
+					console.log('No pose')
+					return
+				}
+
+				updateScene(frame)
+
+				engine.startFrame()
+				for (let view of frame.views) {
+					engine.camera.matrix.fromArray(pose.getViewMatrix(view))
+					engine.camera.updateMatrixWorld()
+					engine.camera.projectionMatrix.fromArray(view.projectionMatrix)
+
+					engine.renderer.setSize(canvas.width, canvas.height, false)
+					let viewport = session.baseLayer.getViewport(view)
+					engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
+
+					composer.render(0.01)
+				}
+				engine.endFrame()
+			}
+
+			////////////////////////////////////
+			// hit testing
+			function handleHitResults(hits) {
+				let size = 0.05;
+				let hit = hits[0]
+
+				session.addAnchor(hit, headFrameOfReference).then(anchor => {					
+					engine.addAnchoredNode(anchor, createSceneGraphNode())
+				}).catch(err => {
+					console.error('Error adding anchor', err)
+				})
+			}
+
+			//////////////////////////////
+			// create and update the "peoples"
+			function createSceneGraphNode(){
+				const group = new THREE.Group()
+				group.add(createMesh(
+					geometries[Math.floor(geometries.length * Math.random())], 
+					0.006,
+					0,0,0, 
+					0.025, 
+					colors[Math.floor(colors.length * Math.random())],
+					true
+				))
+				return group
+			}
+
+			function updateScene(frame){
+				let delta = 10 * clock.getDelta()
+				delta = delta < 2 ? delta : 2
+
+				let data = null
+				let vertices = null
+				let vertices_tmp = null
+				let vl = null
+				let d = null
+				let vt = null
+				let mesh = null
+				let p = null
+				for(let j = 0, jl = meshes.length; j < jl; j ++){
+					data = meshes[j]
+					mesh = data.mesh
+					vertices = data.vertices
+					vertices_tmp = data.vertices_tmp
+					vl = data.vl
+					if (! data.dynamic) continue
+					if (data.start > 0){
+						data.start -= 1
+					} else {
+						if (!data.started){
+							data.direction = -1
+							data.started = true
+						}
+					}
+					for (let i = 0; i < vl; i ++){
+						p = vertices[i]
+						vt = vertices_tmp[i]
+						// falling down
+						if (data.direction < 0){
+							if (p.y > 0){
+								p.x += 1.5 * (0.50 - Math.random()) * data.speed * delta
+								p.y += 3.0 * (0.25 - Math.random()) * data.speed * delta
+								p.z += 1.5 * (0.50 - Math.random()) * data.speed * delta
+							} else {
+								if (! vt[3]){
+									vt[3] = 1
+									data.down += 1
+								}
+							}
+						}
+						// rising up
+						if (data.direction > 0){
+							d = Math.abs(p.x - vt[0]) + Math.abs(p.y - vt[1]) + Math.abs(p.z - vt[2])
+							if (d > 1){
+								p.x += - (p.x - vt[0]) / d * data.speed * delta * (0.85 - Math.random())
+								p.y += - (p.y - vt[1]) / d * data.speed * delta * (1 + Math.random())
+								p.z += - (p.z - vt[2]) / d * data.speed * delta * (0.85 - Math.random())
+							} else {
+								if (! vt[4]){
+									vt[4] = 1
+									data.up += 1
+								}
+							}
+						}
+					}
+					// all down
+					if (data.down === vl){
+						if (data.delay === 0){
+							data.direction = 1
+							data.speed = 10
+							data.down = 0
+							data.delay = 320
+							for(let i = 0; i < vl; i ++){
+								vertices_tmp[i][3] = 0
+							}
+						} else {
+							data.delay -= 1
+						}
+					}
+					// all up
+					if (data.up === vl){
+						if (data.delay === 0){
+							data.direction = -1
+							data.speed = 35
+							data.up = 0
+							data.delay = 120
+							for(let i = 0; i < vl; i ++){
+								vertices_tmp[i][4] = 0
+							}
+						} else {
+							data.delay -= 1
+						}
+					}
+					mesh.geometry.verticesNeedUpdate = true
+				}
+			}
+
+			function createMesh(originalGeometry, scale, x, y, z, pointSize, color, dynamic){
+				let i, c, mesh, p
+				let vertices = originalGeometry.vertices
+				let vl = vertices.length
+				let geometry = new THREE.Geometry()
+				let vertices_tmp = []
+				for (i = 0; i < vl; i ++){
+					p = vertices[i]
+					geometry.vertices[i] = p.clone()
+					vertices_tmp[i] = [p.x, p.y, p.z, 0, 0]
+				}
+				if (dynamic){
+					c = color
+					mesh = new THREE.Points(geometry, new THREE.PointsMaterial({ size: pointSize, color: c }))
+					clonemeshes.push({ mesh: mesh, speed: 0.5 + Math.random() })
+				} else {
+					mesh = new THREE.Points(geometry, new THREE.PointsMaterial({ size: pointSize, color: color }))
+				}
+				mesh.scale.x = mesh.scale.y = mesh.scale.z = scale
+				mesh.position.x = x
+				mesh.position.y = y
+				mesh.position.z = z
+				mesh.quaternion.setFromEuler(new THREE.Euler(0, (Math.PI * 2) * Math.random(), 0))
+				meshes.push({
+					mesh: mesh,
+					vertices: geometry.vertices,
+					vertices_tmp: vertices_tmp,
+					vl: vl,
+					down: 0,
+					up: 0,
+					direction: 0,
+					speed: 35,
+					delay: Math.floor(10 * Math.random()),
+					started: false,
+					start: Math.floor(100 * Math.random()),
+					dynamic: dynamic
+				})
+				mesh.name = 'prettyperson: ' + Math.random() 
+				return mesh
+			}
+		
+			////////////////////////////////////////////////////
+			// BOILER PLATE.  Can you feel the plates boiling?
+			//
+			// Create the output context where the XRSession will place composited renders
+			const xrCanvas = document.createElement('canvas')
+			xrCanvas.setAttribute('class', 'xr-canvas')
+			const xrContext = xrCanvas.getContext('xrpresent')
+			if(!xrContext){
+				console.error('No XR context', xrCanvas)
+			}
+
+			navigator.xr.requestDevice().then(xrDevice => {
+				device = xrDevice
+			}).catch(err => {
+				console.error('Error', err)
+			})
+
+			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
+
+			// handle input events from the XRInputManager
+			const inputManager = new XRInputManager(handleXRInput)
+			function handleXRInput(eventName, details){
+				switch(eventName){
+					case 'normalized-touch':
+						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
+							.then(handleHitResults)
+							.catch(err => {
+								console.error('Error testing hits', err)
+							})
+						break
+					default:
+						console.error('unknown xr input event', eventName, details)
+						break
+				}
+			}
+
+			function hitTestWithScreenCoordinates(normalizedX, normalizedY){
+				if(session === null){
+					console.log('No session for hit testing')
+					return Promise.reject()
+				}
+				if(headFrameOfReference === null){
+					console.log('No frame of reference')
+					return Promise.reject()
+				}
+				// Convert the screen coordinates into head-model origin/direction for hit testing
+				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
+																							engine.camera.projectionMatrix)
+
+				return session.requestHitTest(origin, direction, headFrameOfReference)
+			}
+
+
+			function handleStartSessionRequest(ev){
+				if(device === null){
+					console.error('No xr device')
+					return
+				}
+
+				if (!session) {
+					device.requestSession({ outputContext: xrContext })
+						.then(handleSessionStarted)
+						.catch(err => {
+							console.error('Session setup error', err)
+						})
+					document.getElementById('go-button').value = "End"
+				} else {
+					session.end()
+					handleSessionEnded();
+					document.getElementById('go-button').value = "Go"
+				}
+			}
+
+			function handleSessionEnded() {	
+				session = null
+			}
+
+			function handleSessionStarted(xrSession){
+				session = xrSession
+				document.body.insertBefore(xrCanvas, document.body.firstChild)
+
+				// Create the context where we will render our 3D scene
+				canvas = document.createElement('canvas')
+				var glContext = canvas.getContext('webgl', {
+					compatibleXRDevice: device
+				})
+				if(!glContext) throw new Error('Could not create a webgl context')
+
+				// Set up the base layer
+				session.baseLayer = new XRWebGLLayer(session, glContext)
+
+				// Create a simple test scene and renderer
+				// The engine's scene is in the eye-level coordinate system 
+				engine = new XREngine(canvas, glContext)
+
+				// head-model is the coordinate system that tracks the position of the display
+				session.requestFrameOfReference('head-model').then(frameOfReference =>{
+					headFrameOfReference = frameOfReference
+				})
+				.catch(err => {
+					console.error('Error finding head frame of reference', err)
+				})
+				// eye-level is the coordinate system of the ARKit tracking system 
+				session.requestFrameOfReference('eye-level').then(frameOfReference => {
+					eyeLevelFrameOfReference = frameOfReference
+					// Kick off rendering
+					session.requestAnimationFrame(handleAnimationFrame)
+				})
+				.catch(err => {
+					console.error('Error finding eye frame of reference', err)
+				})
+
+				initializeScene()
+			}
+
+		</script>
+	</body>
+</html>

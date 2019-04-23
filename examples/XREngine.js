@@ -196,6 +196,60 @@ export default class XREngine {
 		}
 	}
 	
+	fillInGLTFScene(path, position=[0, 0, -2], scale=[1, 1, 1]){
+		let ambientLight = new THREE.AmbientLight('#FFF', 1)
+		this._scene.add(ambientLight)
+	
+		let directionalLight = new THREE.DirectionalLight('#FFF', 0.6)
+		this._scene.add(directionalLight)
+	
+		this.loadGLTF(path).then(gltf => {
+			gltf.scene.scale.set(...scale)
+			gltf.scene.position.set(...position)
+			//gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / -2)
+			this._scene.add(gltf.scene)
+		}).catch((...params) =>{
+			console.error('could not load gltf', ...params)
+		})
+	}
+}
+	
+window.loadGLTF = function(url){
+	return new Promise((resolve, reject) => {
+		let loader = new THREE.GLTFLoader()
+		loader.load(url, (gltf) => {
+			if(gltf === null){
+				reject()
+			}
+			if(gltf.animations && gltf.animations.length){
+				let mixer = new THREE.AnimationMixer(gltf.scene)
+				for(let animation of gltf.animations){
+					mixer.clipAction(animation).play()
+				}
+			}
+			resolve(gltf)
+		})
+	})
+}
+
+window.loadObj = function(baseURL, geometry){
+	return new Promise(function(resolve, reject){
+		const mtlLoader = new THREE.MTLLoader()
+		mtlLoader.setPath(baseURL)
+		const mtlName = geometry.split('.')[geometry.split(':').length - 1] + '.mtl'
+		mtlLoader.load(mtlName, (materials) => {
+			materials.preload()
+			let objLoader = new THREE.OBJLoader()
+			objLoader.setMaterials(materials)
+			objLoader.setPath(baseURL)
+			objLoader.load(geometry, (obj) => {
+				resolve(obj)
+			}, () => {} , (...params) => {
+				console.error('Failed to load obj', ...params)
+				reject(...params)
+			})
+		})
+	})
 }
 
 /*

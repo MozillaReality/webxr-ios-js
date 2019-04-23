@@ -40,35 +40,13 @@
 			const identity = mat4.identity(mat4.create())
 			const upY = vec3.fromValues(0,1,0)
 
-			// Create the output context where the XRSession will place composited renders
-			const xrCanvas = document.createElement('canvas')
-			xrCanvas.setAttribute('class', 'xr-canvas')
-			const xrContext = xrCanvas.getContext('xrpresent')
-			if(!xrContext){
-				console.error('No XR context', xrCanvas)
-			}
+			function initializeScene(){
+				engine.addAmbientLight()
+				engine.addDirectionalLight()
 
-
-			// get the XR Device
-			navigator.xr.requestDevice().then(xrDevice => {
-				device = xrDevice
-			}).catch(err => {
-				console.error('Error', err)
-			})
-
-			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
-
-			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager(handleXRInput)
-			function handleXRInput(eventName, details){
-				switch(eventName){
-					case 'normalized-touch':
-						addAnchorInScreenCoordinates(...details.normalizedCoordinates)
-						break
-					default:
-						console.error('unknown xr input event', eventName, details)
-						break
-				}
+				// Add a box and sphere at the origin of the eye-level coordinate system
+				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 			}
 
 			function addAnchorInScreenCoordinates(normalizedX, normalizedY){
@@ -81,8 +59,9 @@
 					return 
 				}
 				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
-																							engine.camera.projectionMatrix)
+				const [origin, direction] = 
+					XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
+																 engine.camera.projectionMatrix)
 
 				// set up the local transformation to be positioned relative to the camera along
 				// the ray, but also oriented along the ray direction
@@ -120,6 +99,40 @@
 				return group
 			}
 
+			////////////////////////////////////////////////////
+			////////////////////////////////////////////////////
+			// BOILER PLATE.  Can you feel the plates boiling?
+			//
+			// Create the output context where the XRSession will place composited renders
+			const xrCanvas = document.createElement('canvas')
+			xrCanvas.setAttribute('class', 'xr-canvas')
+			const xrContext = xrCanvas.getContext('xrpresent')
+			if(!xrContext){
+				console.error('No XR context', xrCanvas)
+			}
+
+			// get the XR Device
+			navigator.xr.requestDevice().then(xrDevice => {
+				device = xrDevice
+			}).catch(err => {
+				console.error('Error', err)
+			})
+
+			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
+
+			// handle input events from the XRInputManager
+			const inputManager = new XRInputManager(handleXRInput)
+			function handleXRInput(eventName, details){
+				switch(eventName){
+					case 'normalized-touch':
+						addAnchorInScreenCoordinates(...details.normalizedCoordinates)
+						break
+					default:
+						console.error('unknown xr input event', eventName, details)
+						break
+				}
+			}
+
 			/////////////////////
 			// Session startup / shutdown
 			function handleStartSessionRequest(ev){
@@ -134,11 +147,11 @@
 						.catch(err => {
 							console.error('Session setup error', err)
 						})
-					document.getElementById('go-button').text = "End"
+					document.getElementById('go-button').value = "End"
 				} else {
 					session.end()
 					handleSessionEnded();
-					document.getElementById('go-button').text = "Go"
+					document.getElementById('go-button').value = "Go"
 				}
 			}
 
@@ -163,12 +176,6 @@
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, glContext)
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
-
-				// Add a box and sphere at the origin of the eye-level coordinate system
-				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 
 				// head-model is the coordinate system that tracks the position of the display
 				session.requestFrameOfReference('head-model').then(frameOfReference =>{
@@ -186,9 +193,10 @@
 				.catch(err => {
 					console.error('Error finding eye frame of reference', err)
 				})
+
+				initializeScene()
 			}
 
-			////////////////
 			// render loop			
 			function handleAnimationFrame(t, frame){
 				if(session.ended) return

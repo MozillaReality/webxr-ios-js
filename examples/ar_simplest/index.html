@@ -38,6 +38,21 @@
 			const workingMatrix1 = mat4.create()
 			const identity = mat4.identity(mat4.create())
 
+			function initializeScene(){
+				engine.addAmbientLight()
+				engine.addDirectionalLight()
+
+				// Add a box and sphere at the origin of the eye-level coordinate system
+				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				engine.addSphere([0, 0, -0.2], [0.025, 0.025, 0.025], 0xff4444)
+				engine.addTeapot([0,0, 0.5])				
+				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+			}
+
+			////////////////////////////////////////////////////
+			////////////////////////////////////////////////////
+			// BOILER PLATE.  Can you feel the plates boiling?
+			//
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
 			xrCanvas.setAttribute('class', 'xr-canvas')
@@ -66,11 +81,11 @@
 						.catch(err => {
 							console.error('Session setup error', err)
 						})
-					document.getElementById('go-button').text = "End"
+					document.getElementById('go-button').value = "End"
 				} else {
 					session.end()
 					handleSessionEnded();
-					document.getElementById('go-button').text = "Go"
+					document.getElementById('go-button').value = "Go"
 				}
 			}
 
@@ -95,14 +110,6 @@
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, glContext)
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
-
-				// Add a box and sphere at the origin of the eye-level coordinate system
-				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				engine.addSphere([0, 0, -0.2], [0.025, 0.025, 0.025], 0xff4444)
-				engine.addTeapot([0,0.5,0])				
-				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 
 				// head-model is the coordinate system that tracks the position of the display
 				session.requestFrameOfReference('head-model').then(frameOfReference =>{
@@ -120,8 +127,11 @@
 				.catch(err => {
 					console.error('Error finding eye frame of reference', err)
 				})
+
+				initializeScene()
 			}
 
+			// render loop			
 			function handleAnimationFrame(t, frame){
 				if(session.ended) return
 				session.requestAnimationFrame(handleAnimationFrame)
