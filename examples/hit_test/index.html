@@ -38,6 +38,52 @@
 			const workingMatrix1 = mat4.create()
 			const identity = mat4.identity(mat4.create())
 
+			function initializeScene(){
+				engine.addAmbientLight()
+				engine.addDirectionalLight()
+
+				// Add a box and axis at the origin of the eye-level coordinate system
+				// for debugging by uncommenting these lines
+				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+			}
+			
+			function handleHitResults(hits) {
+				let size = 0.05;
+				let hit = hits[0]
+
+				session.addAnchor(hit, headFrameOfReference).then(anchor => {					
+					engine.addAnchoredNode(anchor, createSceneGraphNode())
+				}).catch(err => {
+					console.error('Error adding anchor', err)
+				})
+			}
+
+			// Creates a box used to indicate the location of an anchor offset
+			function createSceneGraphNode(){
+				let group = new THREE.Group()
+				let geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1)
+				var color = new THREE.Color( 0xffffff );
+        		color.setHex( Math.random() * 0xffffff );
+				let material = new THREE.MeshPhongMaterial({ color: color })
+				let mesh = new THREE.Mesh(geometry, material)
+	
+				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
+
+				mesh.position.set(0, 0.05, 0)
+				outlineMesh.position.set(0, 0.05, 0);
+				outlineMesh.scale.multiplyScalar(1.05);
+
+				group.add(mesh)
+				group.add(outlineMesh)
+				return group
+			}
+
+			////////////////////////////////////////////////////
+			////////////////////////////////////////////////////
+			// BOILER PLATE.  Can you feel the plates boiling?
+			//
 			// Create the output context where the XRSession will place composited renders
 			const xrCanvas = document.createElement('canvas')
 			xrCanvas.setAttribute('class', 'xr-canvas')
@@ -45,7 +91,6 @@
 			if(!xrContext){
 				console.error('No XR context', xrCanvas)
 			}
-
 
 			// get the XR Device
 			navigator.xr.requestDevice().then(xrDevice => {
@@ -89,38 +134,6 @@
 				return session.requestHitTest(origin, direction, headFrameOfReference)
 			}
 
-			function handleHitResults(hits) {
-				let size = 0.05;
-				let hit = hits[0]
-
-				session.addAnchor(hit, headFrameOfReference).then(anchor => {					
-					engine.addAnchoredNode(anchor, createSceneGraphNode())
-				}).catch(err => {
-					console.error('Error adding anchor', err)
-				})
-			}
-
-			// Creates a box used to indicate the location of an anchor offset
-			function createSceneGraphNode(){
-				let group = new THREE.Group()
-				let geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1)
-				var color = new THREE.Color( 0xffffff );
-        		color.setHex( Math.random() * 0xffffff );
-				let material = new THREE.MeshPhongMaterial({ color: color })
-				let mesh = new THREE.Mesh(geometry, material)
-	
-				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
-				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
-
-				mesh.position.set(0, 0.05, 0)
-				outlineMesh.position.set(0, 0.05, 0);
-				outlineMesh.scale.multiplyScalar(1.05);
-
-				group.add(mesh)
-				group.add(outlineMesh)
-				return group
-			}
-
 			/////////////////////
 			// Session startup / shutdown
 			function handleStartSessionRequest(ev){
@@ -135,11 +148,11 @@
 						.catch(err => {
 							console.error('Session setup error', err)
 						})
-					document.getElementById('go-button').text = "End"
+					document.getElementById('go-button').value = "End"
 				} else {
 					session.end()
 					handleSessionEnded();
-					document.getElementById('go-button').text = "Go"
+					document.getElementById('go-button').value = "Go"
 				}
 			}
 
@@ -164,12 +177,6 @@
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, glContext)
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
-
-				// Add a box and sphere at the origin of the eye-level coordinate system
-				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 
 				// head-model is the coordinate system that tracks the position of the display
 				session.requestFrameOfReference('head-model').then(frameOfReference =>{
@@ -187,6 +194,8 @@
 				.catch(err => {
 					console.error('Error finding eye frame of reference', err)
 				})
+
+				initializeScene()
 			}
 
 			////////////////

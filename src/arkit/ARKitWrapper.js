@@ -49,6 +49,7 @@ export default class ARKitWrapper extends EventTarget {
 
 		this._deviceId = null
 		this._isWatching = false
+		this._waitingForFirstWatch = null
 		this._isInitialized = false
 		this._rawARData = null
 
@@ -363,6 +364,11 @@ export default class ARKitWrapper extends EventTarget {
 		return new Promise((resolve, reject) => {
 			var anchor = new XRAnchor(anchorInWorldMatrix)
 			this.addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
+				// of there was an error ...
+				if (detail.error) {
+					reject(detail.error)
+				}
+
 				var _anchor = this._anchors.get(detail.uuid);
 				if(!_anchor){
 					// need to get the data in eye-level reference frame
@@ -434,10 +440,18 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
-	removeAnchor(uid) {
-		window.webkit.messageHandlers.removeAnchors.postMessage([uid])
+	removeAnchor(anchor) {
+		if(this._anchors.get(anchor.uid)) {
+			this._anchors.delete(anchor.uid)
+		}
+		if(this._planes.get(anchor.uid)) {
+			this._planes.delete(anchor.uid)
+		}
+		// only remove real ARKit anchors from native code
+		if (!(anchor.placeholder || anchor instanceof XRAnchorOffset)) { 
+			window.webkit.messageHandlers.removeAnchors.postMessage([anchor.uid])
+		}
 	}
-
 
 	/*
 	 * ask for an image anchor.
@@ -535,10 +549,18 @@ export default class ARKitWrapper extends EventTarget {
 				resolve();
 				return;
 			}
+
 			console.log('----STOP');
-			window.webkit.messageHandlers.stopAR.postMessage({
-				callback: this._createPromiseCallback('stop', resolve)
-			})
+			if (!this._waitingForFirstWatch) {
+				window.webkit.messageHandlers.stopAR.postMessage({
+					callback: this._createPromiseCallback('stop', reject("session hadn't completed startup"))
+				})
+				this._waitingForFirstWatch = null
+			} else {
+				window.webkit.messageHandlers.stopAR.postMessage({
+					callback: this._createPromiseCallback('stop', resolve)
+				})
+			}
 		})
 	}
 	
@@ -729,8 +751,11 @@ export default class ARKitWrapper extends EventTarget {
 				// plane.alignment = element.plane_alignment
 				// plane.geometry = element.geometry
 				plane.object.updatePlaneData(element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry)
-				plane.object.modelMatrix = element.transform
-				plane.object.notifyOfUpdate();
+
+				if (!mat4.equals(plane.object.modelMatrix, element.transform)) {
+					plane.object.modelMatrix = element.transform
+					plane.object.notifyOfUpdate();
+				}
 				element.object = plane.object
 			}
 		}else{
@@ -776,8 +801,10 @@ export default class ARKitWrapper extends EventTarget {
 						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes)
 						break
 				}
-				anchor.object.modelMatrix = element.transform
-				anchor.object.notifyOfUpdate();
+				if (!mat4.equals(anchor.object.modelMatrix, element.transform)) {
+					anchor.object.modelMatrix = element.transform
+					anchor.object.notifyOfUpdate();
+				}
 				element.object = anchor.object
 			}
 		}
