@@ -44,9 +44,10 @@
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
 
-				// Add a box and sphere at the origin of the eye-level coordinate system
-				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+				// Add a box and axis at the origin of the eye-level coordinate system
+				// for debugging by uncommenting these lines
+				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 			}
 
 			function addAnchorInScreenCoordinates(normalizedX, normalizedY){
