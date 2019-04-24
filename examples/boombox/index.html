@@ -9,17 +9,13 @@
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
-		<script>	
-			window.hideMe = function(elem) { elem.style.display = 'none' }
-		</script>
-		<div onclick="hideMe(this)" id="description">
+		<div id="description">
 			<h2>Boombox</h2>
 			<h5>(click to dismiss)</h5>
 			<p>Shows a boombox in a Panoramic photo environment.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
-
 			// some dependencies and utilities
 			import * as mat4 from '../libs/gl-matrix/mat4.js'
 			import * as vec3 from '../libs/gl-matrix/vec3.js'
@@ -33,13 +29,40 @@
 			let layer = null
 			let frameOfReference = null
 			let engine = null
-			let envMap = null
 
 			// temporary working variables
 			const workingMatrix1 = mat4.create()
 			const identity = mat4.identity(mat4.create())
 
+			// start the textures and the boombox model loading immediately
 			const startGroup = new THREE.Group()
+
+			// Create the environment map
+			const path = '../textures/Park2/'
+			const format = '.jpg'
+			var envMap = new THREE.CubeTextureLoader().load([
+				path + 'posx' + format, path + 'negx' + format,
+				path + 'posy' + format, path + 'negy' + format,
+				path + 'posz' + format, path + 'negz' + format
+			])
+			envMap.format = THREE.RGBFormat			
+			
+			loadGLTF('../models/BoomBox/glTF-pbrSpecularGlossiness/BoomBox.gltf').then(gltf => {
+				gltf.scene.scale.set(15, 15, 15)
+				gltf.scene.position.set(0, 0, -1)
+				gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
+
+				gltf.scene.traverse(node => {
+					if (node.material && (node.material.isMeshStandardMaterial || (node.material.isShaderMaterial && node.material.envMap !== undefined))){
+						node.material.envMap = envMap
+						node.material.needsUpdate = true
+					}
+				})
+
+				startGroup.add(gltf.scene)
+			}).catch((...params) =>{
+				console.error('could not load gltf', ...params)
+			})
 
 			function initializeScene(){
 				engine.addAmbientLight()
@@ -52,35 +75,7 @@
 
 				engine.scene.add(startGroup)
 				engine.scene.background = new THREE.Color(0x222222)
-
-				// Create the environment map
-				const path = '../textures/Park2/'
-				const format = '.jpg'
-				envMap = new THREE.CubeTextureLoader().load([
-					path + 'posx' + format, path + 'negx' + format,
-					path + 'posy' + format, path + 'negy' + format,
-					path + 'posz' + format, path + 'negz' + format
-				])
-				envMap.format = THREE.RGBFormat
 				engine.scene.background = envMap
-
-				// Add the boom box
-				loadGLTF('../models/BoomBox/glTF-pbrSpecularGlossiness/BoomBox.gltf').then(gltf => {
-					gltf.scene.scale.set(15, 15, 15)
-					gltf.scene.position.set(0, 0, -1)
-					gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
-
-					gltf.scene.traverse(node => {
-						if (node.material && (node.material.isMeshStandardMaterial || (node.material.isShaderMaterial && node.material.envMap !== undefined))){
-							node.material.envMap = envMap
-							node.material.needsUpdate = true
-						}
-					})
-
-					startGroup.add(gltf.scene)
-				}).catch((...params) =>{
-					console.error('could not load gltf', ...params)
-				})
 			}
 
 			////////////////////////////////////////////////////
@@ -100,7 +95,18 @@
 				console.error('Error', err)
 			})
 
+			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
+			function hideMe(event) { 
+				event.target.style.display = 'none' 
+				event.stopPropagation()
+			}
+
+
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
+			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
+			function handleGoButtonTouch(event) { 
+				event.stopPropagation()
+			}
 
 			function handleStartSessionRequest(ev){
 				if(device === null){
@@ -114,11 +120,12 @@
 						.catch(err => {
 							console.error('Session setup error', err)
 						})
-					document.getElementById('go-button').value = "End"
+					document.getElementById('go-button').innerText = "End"
 				} else {
 					session.end()
 					handleSessionEnded();
-					document.getElementById('go-button').value = "Go"
+					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').innerText = "Go"
 				}
 			}
 
@@ -154,14 +161,14 @@
 	
 						//// this TIMEOUT NEEDS TO BE REMOVED but there's a bug in requestSession
 						//// returning too fast
-						window.setTimeout(() => {
+						//window.setTimeout(() => {
 							// add an anchor where the camera is
 							session.addAnchor(identity, headFrameOfReference).then(anchor => {			
 								engine.addAnchoredNode(anchor, startGroup)
 							}).catch(err => {
 								console.error('Error adding anchor', err)
 							})
-						}, 4000)
+						//}, 4000)
 						// Kick off rendering
 						session.requestAnimationFrame(handleAnimationFrame)
 					})
@@ -178,7 +185,7 @@
 			}
 
 			function handleAnimationFrame(t, frame){
-				if(session.ended) return
+				if(!session || session.ended) return
 				session.requestAnimationFrame(handleAnimationFrame)
 
 				let pose = frame.getDevicePose(eyeLevelFrameOfReference)

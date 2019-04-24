@@ -1,4 +1,5 @@
 
+  
   <html>
 	<head>
 		<title>Reticle example</title>
@@ -10,9 +11,9 @@
 	</head>
 	<body>
 		<div id="description">
-			<h2>Reticle</h2>
+			<h2>Illumination Sensing</h2>
 			<h5>(click to dismiss)</h5>
-			<p>Place a reticle on surfaces.</p>
+			<p>Place a reticle on surfaces illuminated with an estimate of the light in the room.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
@@ -49,13 +50,15 @@
 			
 			var reticleTrackedColor = new THREE.Color( 0xDDFFDD );
 			var reticleNotTrackedColor = new THREE.Color( 0xFF6666 );
-			var reticleMaterial = new THREE.MeshBasicMaterial({ color: reticleTrackedColor })
+			var reticleMaterial = new THREE.MeshStandardMaterial({ color: reticleTrackedColor })
 			var requestNextHit = true
 
-			function initializeScene(){
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
+			var ambientLight = null
+			var directionalLight = null
 
+			function initializeScene(){
+				ambientLight = engine.addAmbientLight()
+				directionalLight = engine.addDirectionalLight()
 				// Add a box and axis at the origin of the eye-level coordinate system
 				// for debugging by uncommenting these lines
 				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
@@ -74,6 +77,14 @@
 				engine.scene.add(reticleParent)
 			}
 			
+			function updateScene(frame){
+				if(frame.worldInformation.estimatedLight){
+					let ambientIntensity = frame.worldInformation.estimatedLight.ambientIntensity
+					ambientLight.intensity = ambientIntensity;
+					directionalLight.intensity = ambientIntensity * 0.5;
+				}
+			}
+
 			// handle hit testing slightly differently than other samples, since we're doing
 			// it per frame.  The "boiler plate" code below is slightly different, setting 
 			// requestNextHit on tap instead of executing the hit test.  The custom XREngineHits
@@ -185,8 +196,10 @@
 				}
 
 				if (!session) {
-					device.requestSession({ outputContext: xrContext })
-						.then(handleSessionStarted)
+					device.requestSession({ 
+						outputContext: xrContext,
+						worldSensing: true  
+					}).then(handleSessionStarted)
 						.catch(err => {
 							console.error('Session setup error', err)
 						})
@@ -207,6 +220,12 @@
 			function handleSessionStarted(xrSession){
 				session = xrSession
 				document.body.insertBefore(xrCanvas, document.body.firstChild)
+
+				let sensingState = xrSession.updateWorldSensingState({
+					illuminationDetectionState : {
+					   enabled : true
+					}
+				})
 
 				// Create the context where we will render our 3D scene
 				const canvas = document.createElement('canvas')
@@ -246,6 +265,7 @@
 			////////////////
 			// render loop			
 			function handleAnimationFrame(t, frame){
+				updateScene(frame)
 				if(!session || session.ended) return
 				session.requestAnimationFrame(handleAnimationFrame)
 

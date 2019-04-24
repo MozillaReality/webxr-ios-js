@@ -8,17 +8,13 @@
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
-		<script>	
-				window.hideMe = function(elem) { elem.style.display = 'none' }
-		</script>
-		<div onclick="hideMe(this)" id="description">
+	    <div id="description">
 			<h2>Anchored Boxes</h2>
 			<h5>(click to dismiss)</h5>
 			<p>Anchor boxes to XRAnchors created in front the where the user taps on the screen.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
-
 			// some dependencies and utilities
 			import * as mat4 from '../libs/gl-matrix/mat4.js'
 			import * as vec3 from '../libs/gl-matrix/vec3.js'
@@ -119,7 +115,17 @@
 				console.error('Error', err)
 			})
 
-			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
+			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
+			function hideMe(event) { 
+				event.target.style.display = 'none' 
+				event.stopPropagation()
+			}
+
+			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
+			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
+			function handleGoButtonTouch(event) { 
+				event.stopPropagation()
+			}
 
 			// handle input events from the XRInputManager
 			const inputManager = new XRInputManager(handleXRInput)
@@ -148,11 +154,12 @@
 						.catch(err => {
 							console.error('Session setup error', err)
 						})
-					document.getElementById('go-button').value = "End"
+					document.getElementById('go-button').innerText = "End"
 				} else {
 					session.end()
 					handleSessionEnded();
-					document.getElementById('go-button').value = "Go"
+					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').innerText = "Go"
 				}
 			}
 
@@ -200,7 +207,7 @@
 
 			// render loop			
 			function handleAnimationFrame(t, frame){
-				if(session.ended) return
+				if(!session || session.ended) return
 				session.requestAnimationFrame(handleAnimationFrame)
 
 				let pose = frame.getDevicePose(eyeLevelFrameOfReference)

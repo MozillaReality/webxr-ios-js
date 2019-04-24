@@ -65,13 +65,35 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			return Promise.reject()
 		}
 
-		const session = new Session(options.outputContext || null)
-		this._sessions.set(session.id, session)
-		this._activeSession = session
-		this._arKitWrapper.waitForInit().then(() => {
-			this._arKitWrapper.watch()
+		var ARKitOptions = {}
+		if (options.worldSensing) {
+			ARKitOptions.worldSensing = options.worldSensing
+		}
+		if (options.useComputerVision) {
+			ARKitOptions.videoFrames = options.useComputerVision
+		}
+		if (options.alignEUS) {
+			ARKitOptions.alignEUS = options.alignEUS
+		}
+
+		let initResult = await this._arKitWrapper.waitForInit().then(() => {
+		}).catch((...params) => {
+			console.error("app failed to initialize: ", ...params)
+			return Promise.reject()
 		})
-		return Promise.resolve(session.id)
+
+		let watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
+			const session = new Session(options.outputContext || null)
+			this._sessions.set(session.id, session)
+			this._activeSession = session
+
+			return Promise.resolve(session.id)
+		}).catch((...params) => {
+			console.error("session request failed: ", ...params)
+			return Promise.reject()
+		})
+
+		return watchResult
 	}
 
 	onBaseLayerSet(sessionId, layer){
@@ -124,7 +146,7 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	endSession(sessionId){
 		const session = this._sessions.get(sessionId);
-		if (session.ended) return
+		if(!session || session.ended) return
 		session.ended = true
 		if(this._activeSession === session){
 			this._activeSession = null
@@ -203,7 +225,7 @@ class ARWatcher extends ARKitWatcher {
 		this._arKitDevice = arKitDevice
 	}
 	handleARKitUpdate(event){
-		// const cameraTransformMatrix = this._arKitWrapper.getData('camera_transform')
+		// const cameraTransformMatrix = this._arKitWrapper._getData('camera_transform')
 		// if (cameraTransformMatrix) {
 		// 	this._arKitDevice.setBaseViewMatrix(cameraTransformMatrix)
 		// } else {
@@ -211,7 +233,7 @@ class ARWatcher extends ARKitWatcher {
 		// }
 		this._arKitDevice.setBaseViewMatrix(this._arKitWrapper._cameraTransform)
 
-		// const cameraProjectionMatrix = this._arKitWrapper.getData('projection_camera')
+		// const cameraProjectionMatrix = this._arKitWrapper._getData('projection_camera')
 		// if(cameraProjectionMatrix){
 		// 	this._arKitDevice.setProjectionMatrix(cameraProjectionMatrix)
 		// } else {
