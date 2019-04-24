@@ -49,6 +49,14 @@ function _getTransformTo(sourceMatrix, destinationMatrix){
 
 const _arKitWrapper = ARKitWrapper.GetOrCreate()
 
+function _updateWorldSensingState (options) {
+	return _arKitWrapper.updateWorldSensingState(options)
+}
+
+function _getWorldInformation () {
+	 return  _arKitWrapper.getWorldInformation()
+}
+
 // This will be XRSession.requestHitTest
 async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	// Promise<FrozenArray<XRHitResult>> requestHitTest(Float32Array origin, Float32Array direction, XRCoordinateSystem coordinateSystem);
@@ -84,6 +92,9 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
 					return new XRHitResult(hitInHeadMatrix, hit)
 				}))
+			}).catch((...params) => {
+				console.error('Error testing for hits', ...params)
+				reject()
 			})
 		}).catch((...params) => {
 			console.error('Error testing for hits', ...params)
@@ -98,7 +109,7 @@ async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
 	//		XRHitResult hitResult
 	// XRFrameOfReference frameOfReference
 	  if (value instanceof XRHitResult) {
-			return _arKitWrapper.addAnchorFromHit(value._hit)
+			return _arKitWrapper.createAnchorFromHit(value._hit)
 			// const hit = value._hit;
 			// // if it's a plane
 			// if (hit.anchor_transform) {
@@ -202,6 +213,7 @@ function _installExtensions(){
 
 	if(window.XRSession){
 		XRSession.prototype.requestHitTest = _xrSessionRequestHitTest
+		XRSession.prototype.updateWorldSensingState = _updateWorldSensingState
 		XRSession.prototype.addAnchor = _addAnchor
 		// XRSession.prototype._setAnchor = _setAnchor
 		// XRSession.prototype._getAnchor = _getAnchor
@@ -209,9 +221,14 @@ function _installExtensions(){
 		XRSession.prototype.removeAnchor = _removeAnchor
 	}
 	
+	if(window.XRFrame) {
+		Object.defineProperty(XRFrame.prototype, 'worldInformation', { get: _getWorldInformation });
+	}
 	if(window.XRFrameOfReference){
 		XRFrameOfReference.prototype.getTransformTo = _xrFrameOfReferenceGetTransformTo
 	}
+
+
 }
 
 _installExtensions()

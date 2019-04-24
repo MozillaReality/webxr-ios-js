@@ -1,14 +1,15 @@
 import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
-import * as mat3 from "gl-matrix/src/gl-matrix/mat3";
-import * as quat from "gl-matrix/src/gl-matrix/quat";
-import * as vec3 from "gl-matrix/src/gl-matrix/vec3";
-import * as glMatrix from "gl-matrix/src/gl-matrix/common";
 
 import * as hitTestUtils from './HitTestUtils.js';
 
 import EventTarget from 'webxr-polyfill/src/lib/EventTarget';
 import XRAnchor from '../extensions/XRAnchor';
 import XRAnchorOffset from '../extensions/XRAnchorOffset';
+import XRPlaneAnchor from '../extensions/XRPlaneAnchor'
+import XRImageAnchor from '../extensions/XRImageAnchor'
+import XRFaceAnchor from '../extensions/XRFaceAnchor'
+import XRVideoFrame from '../extensions/XRVideoFrame'
+import XRLightEstimate from '../extensions/XRLightEstimate'
 
 import base64 from "../lib/base64-binary.js";
 
@@ -17,18 +18,6 @@ ARKitWrapper talks to Apple ARKit, as exposed by Mozilla's test ARDemo app.
 It won't function inside a browser like Firefox.
 
 ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the instance, then add event listeners like so:
-
-	if(ARKitWrapper.HasARKit()){
-		let arKitWrapper = ARKitWrapper.GetOrCreate()
-		arKitWrapper.addEventListener(ARKitWrapper.INIT_EVENT, ev => { console.log('ARKit initialized', ev) })
-		arKitWrapper.addEventListener(ARKitWrapper.WATCH_EVENT, ev => { console.log('ARKit update', ev) })
-		arKitWrapper.watch({
-			location: boolean,
-			camera: boolean,
-			objects: boolean,
-			light_intensity: boolean
-		})
-	}
 
 */
 
@@ -45,13 +34,42 @@ export default class ARKitWrapper extends EventTarget {
 		}
 
 		this._timestamp = 0;
-		this._lightIntensity = 1000;
-
+		this._lightIntensity = new XRLightEstimate()
+		
 		this._deviceId = null
 		this._isWatching = false
-		this._waitingForFirstWatch = null
+		this._waitingForSessionStart = false
 		this._isInitialized = false
 		this._rawARData = null
+
+		/**
+		 * session state, returned from session and updated when it changes.
+		 * 
+		 * May want to change this to an enum, the permission level: 
+		 * 		none, minimal, worldSensing, camera
+		 */
+		this._requestedPermissions = {
+			cameraAccess: false,
+			worldAccess: false
+		}
+
+		// current permissions are the permissions that were granted by the app.
+		// This will be returned from request session, and _might_ be updated later (don't know 
+		// yet how we want to manage that)
+		this._currentPermissions = {
+			cameraAccess:  false,
+			worldAccess: false	
+		}
+		/**
+		 * managing worldSensingState
+		 */
+		// currently requested configuration from web app
+		this._worldSensingState = {
+			illuminationDetectionState: false,
+			meshDetectionState: false
+		}
+		// world information corresponding to that
+		this._worldInformation = null
 
 		/**
 		 * The current projection matrix of the device.
@@ -67,11 +85,9 @@ export default class ARKitWrapper extends EventTarget {
 		this._viewMatrix = new Float32Array(16);
 		this._cameraTransform = new Float32Array(16)
 		/**
-		 * The list of planes coming from ARKit.
-		 * @type {Map<number, ARPlane}
-		 * @private
+		 * The list of meshes, including planes and face anchors, coming from ARKit.
 		 */
-		this._planes = new Map();
+		this._meshes = new Map();
 
 		/* other anchors from ARKit.  Faces, images, results of hit testing. */
 		this._anchors = new Map();
@@ -83,6 +99,7 @@ export default class ARKitWrapper extends EventTarget {
 		this._timeOffset = 0;
 		this._timeOffsetComputed = false;
 
+		
 		/**
 		 * For managing the state of ARKit worldmapping
 		 */
@@ -90,15 +107,15 @@ export default class ARKitWrapper extends EventTarget {
 
 		this._globalCallbacksMap = {} // Used to map a window.arkitCallback method name to an ARKitWrapper.on* method name
 		// Set up the window.arkitCallback methods that the ARKit bridge depends on
-		let callbackNames = ['onInit', 'onWatch']
+		let callbackNames = ['onInit', 'onData']
 		for(let i=0; i < callbackNames.length; i++){
 			this._generateGlobalCallback(callbackNames[i], i)
 		}
 			
 		// default options for initializing ARKit
 		this._defaultOptions = {
-			location: true,
-			camera: true,
+			location: true,    	// device location
+			camera: true,				//
 			objects: true,
 			light_intensity: true,
 			computer_vision_data: false
@@ -123,9 +140,9 @@ export default class ARKitWrapper extends EventTarget {
 			['arkitWindowResize', ARKitWrapper.WINDOW_RESIZE_EVENT],
 			['onError', ARKitWrapper.ON_ERROR],
 			['arTrackingChanged', ARKitWrapper.AR_TRACKING_CHANGED],
-			['userGrantedComputerVisionData', ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA],
-			['userGrantedWorldSensingData', ARKitWrapper.USER_GRANTED_WORLD_SENSING_DATA]
-            //,['onComputerVisionData', ARKitWrapper.COMPUTER_VISION_DATA]
+			// ['userGrantedComputerVisionData', ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA],
+			// ['userGrantedWorldSensingData', ARKitWrapper.USER_GRANTED_WORLD_SENSING_DATA]
+      //,['onComputerVisionData', ARKitWrapper.COMPUTER_VISION_DATA]
 		]
 		for(let i=0; i < eventCallbacks.length; i++){
 			window[eventCallbacks[i][0]] = (detail) => {
@@ -146,6 +163,7 @@ export default class ARKitWrapper extends EventTarget {
 				}
 			}
 		}
+
 		/*
 		 * Computer vision needs massaging
 		 */
@@ -162,6 +180,14 @@ export default class ARKitWrapper extends EventTarget {
 			}
 			this._timeOffset = this._timeOffset / this._timeOffsets.length;
 			//console.log("Native time: " + detail.nativeTime + ", new timeOffset: " + this._timeOffset)
+		}
+
+		// we can increase permissions, but not decrease
+		window['userGrantedComputerVisionData'] = (detail) => {
+			this._sessionCameraAccess |= detail.granted 
+		}
+		window['userGrantedWorldSensingData'] = (detail) => {
+			this._sessionWorldAccess |= detail.granted
 		}
 	}
 
@@ -195,9 +221,37 @@ export default class ARKitWrapper extends EventTarget {
 	}
 
 	get deviceId(){ return this._deviceId } // The ARKit provided device ID
-	get isWatching(){ return this._isWatching } // True if ARKit is sending frame data
+	get hasSession(){ return this._isWatching } // True if ARKit is sending frame data
 	get isInitialized(){ return this._isInitialized } // True if this instance has received the onInit callback from ARKit
-	get hasData(){ return this._rawARData !== null } // True if this instance has received data via onWatch
+
+	/*
+	Called during instance creation to send a message to ARKit to initialize and create a device ID
+	Usually results in ARKit calling back to _onInit with a deviceId
+	options: {
+		ui: {
+			browser: boolean,
+			points: boolean,
+			focus: boolean,
+			rec: boolean,
+			rec_time: boolean,
+			mic: boolean,
+			build: boolean,
+			plane: boolean,
+			warnings: boolean,
+			anchors: boolean,
+			debug: boolean,
+			statistics: boolean
+		}
+	}
+	*/
+	_sendInit(options){
+		// get device id
+		console.log('----INIT');
+		window.webkit.messageHandlers.initAR.postMessage({
+			options: options,
+			callback: this._globalCallbacksMap.onInit
+		})
+	}
 
 	/*
 	Useful for waiting for or immediately receiving notice of ARKit initialization
@@ -216,50 +270,25 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
-	/**
-	* Get an iterable of plane objects representing ARKit's current understanding of the world.
-	* @return {iterator<Object>} The iterable of plane objects.
+	/*
+	Callback for when ARKit is initialized
+	deviceId: DOMString with the AR device ID
 	*/
-	getPlanes() {
-		return Array.from(this._planes.values())
+	_onInit(deviceId){
+		this._deviceId = deviceId
+		this._isInitialized = true
+		try {
+			this.dispatchEvent(
+				ARKitWrapper.INIT_EVENT,
+				new CustomEvent(ARKitWrapper.INIT_EVENT, {
+					source: this
+				})
+			)
+        } catch(e) {
+            console.error('INIT_EVENT event error', e)
+        }
 	}
 
-	/*
-	getData looks into the most recent ARKit data (as received by onWatch) for a key
-	returns the key's value or null if it doesn't exist or if a key is not specified it returns all data
-	*/
-	getData(key=null){
-		if (!key){
-			return this._rawARData
-		}
-		if(this._rawARData && typeof this._rawARData[key] !== 'undefined'){
-			return this._rawARData[key]
-		}
-		return null
-	}	
-
-	/*
-	returns
-		{
-			uuid: DOMString,
-			transform: [4x4 column major affine transform]
-		}
-
-	return null if object with `uuid` is not found
-	*/
-	getObject(uuid){
-		if (!this._isInitialized){
-			return null
-		}
-		const objects = this.getKey('objects')
-		if(!objects) return null
-		for(const object of objects){
-			if(object.uuid === uuid){
-				return object
-			}
-		}
-		return null
-	}
 
 	/*
 	Sends a hitTest message to ARKit to get hit testing results
@@ -301,9 +330,9 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
-	hitTestNoAnchor(x, y){
-		return hitTestUtils.hitTestNoAnchor(x, y, this.getPlanes(), this._projectionMatrix, this._viewMatrix)
-	}
+	// hitTestNoAnchor(x, y){
+	// 	return hitTestUtils.hitTestNoAnchor(x, y, this._meshes.values(), this._projectionMatrix, this._viewMatrix)
+	// }
 
 	pickBestHit(hits){
 		if(hits.length === 0) return null
@@ -339,14 +368,14 @@ export default class ARKitWrapper extends EventTarget {
 
 
 	/*
-		Sends an addAnchor message to ARKit
+		Sends an _addAnchor message to ARKit
 		Returns a promise that returns:
 		{
 			uuid - the anchor's uuid,
 			transform - anchor transformation matrix
 		}
 	*/
-  addAnchor(uid, transform){
+  _addAnchor(uid, transform){
 		return new Promise((resolve, reject) => {
 			if (!this._isInitialized){
 				reject(new Error('ARKit is not initialized'));
@@ -363,7 +392,7 @@ export default class ARKitWrapper extends EventTarget {
 	createAnchor(anchorInWorldMatrix) {
 		return new Promise((resolve, reject) => {
 			var anchor = new XRAnchor(anchorInWorldMatrix)
-			this.addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
+			this._addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
 				// of there was an error ...
 				if (detail.error) {
 					reject(detail.error)
@@ -389,17 +418,17 @@ export default class ARKitWrapper extends EventTarget {
 		});
 	}
 
-	addAnchorFromHit(hit) {
+	createAnchorFromHit(hit) {
 		return new Promise((resolve, reject) => {
 			if (hit.anchor_transform) {
 				// Use the first hit to create an XRAnchorOffset, creating the ARKit XRAnchor as necessary
 				let anchor = this._anchors.get(hit.uuid)
 				if(!anchor){
-					anchor = this._planes.get(hit.uuid)
+					anchor = this._meshes.get(hit.uuid)
 
 					if (!anchor) {
 						anchor = new XRAnchor(hit.anchor_transform, hit.uuid)
-						console.log('created dummy anchor (for plane) from hit test')
+						console.log('created dummy anchor from hit test')
 						// mark this as possibly needing replacement
 						anchor.placeholder = true;
 						this._anchors.set(hit.uuid, anchor)
@@ -444,8 +473,8 @@ export default class ARKitWrapper extends EventTarget {
 		if(this._anchors.get(anchor.uid)) {
 			this._anchors.delete(anchor.uid)
 		}
-		if(this._planes.get(anchor.uid)) {
-			this._planes.delete(anchor.uid)
+		if(this._meshes.get(anchor.uid)) {
+			this._meshes.delete(anchor.uid)
 		}
 		// only remove real ARKit anchors from native code
 		if (!(anchor.placeholder || anchor instanceof XRAnchorOffset)) { 
@@ -453,14 +482,15 @@ export default class ARKitWrapper extends EventTarget {
 		}
 	}
 
-	/*
-	 * ask for an image anchor.
+
+	/*************************************************
+	 * ask for an detection image.
 	 * 
 	 * Provide a uid for the anchor that will be created.
 	 * Supply the image in an ArrayBuffer, typedArray or ImageData
 	 * width and height are in meters 
 	 */
-  createImageAnchor(uid, buffer, width, height, physicalWidthInMeters) {
+  createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
 		return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -485,7 +515,7 @@ export default class ARKitWrapper extends EventTarget {
      * @param uid The UID of the image to activate, previously created via "createImageAnchor"
      * @returns {Promise<any>} a promise that will be resolved when ARKit detects the image, or an error otherwise
      */
-	activateDetectionImage(uid) {
+	activateDetectionImage(uid, trackable = false) {
         return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -493,47 +523,50 @@ export default class ARKitWrapper extends EventTarget {
             }
 
             window.webkit.messageHandlers.activateDetectionImage.postMessage({
-                uid: uid,
+								uid: uid,
+								trackable: trackable,
                 callback: this._createPromiseCallback('activateDetectionImage', resolve)
             })
         })
 	}
 
-	    /***
-     * getWorldMap requests a worldmap from the platform
-     * @returns {Promise<any>} a promise that will be resolved when the worldMap has been retrieved, or an error otherwise
-     */
-		getWorldMap() {
-			return new Promise((resolve, reject) => {
-					 if (!this._isInitialized){
-							 reject(new Error('ARKit is not initialized'));
-							 return;
-					 }
 
-					 window.webkit.messageHandlers.getWorldMap.postMessage({
-							 callback: this._createPromiseCallback('getWorldMap', resolve)
-					 })
-			})
-		}
 
-	 /***
-		* setWorldMap requests a worldmap for the platform be set
-		* @returns {Promise<any>} a promise that will be resolved when the worldMap has been set, or an error otherwise
-		*/
-		setWorldMap(worldMap) {
-			return new Promise((resolve, reject) => {
-					 if (!this._isInitialized){
-							 reject(new Error('ARKit is not initialized'));
-							 return;
-					 }
+	/***********************************************
+	 * getWorldMap requests a worldmap from the platform
+	 * @returns {Promise<any>} a promise that will be resolved when the worldMap has been retrieved, or an error otherwise
+	 */
+	getWorldMap() {
+		return new Promise((resolve, reject) => {
+					if (!this._isInitialized){
+							reject(new Error('ARKit is not initialized'));
+							return;
+					}
 
-					 window.webkit.messageHandlers.setWorldMap.postMessage({
-						 worldMap: worldMap.worldMap,
-							 callback: this._createPromiseCallback('setWorldMap', resolve)
-					 })
-			})
-		}
-		
+					window.webkit.messageHandlers.getWorldMap.postMessage({
+							callback: this._createPromiseCallback('getWorldMap', resolve)
+					})
+		})
+	}
+
+	/***
+	* setWorldMap requests a worldmap for the platform be set
+	* @returns {Promise<any>} a promise that will be resolved when the worldMap has been set, or an error otherwise
+	*/
+	setWorldMap(worldMap) {
+		return new Promise((resolve, reject) => {
+					if (!this._isInitialized){
+							reject(new Error('ARKit is not initialized'));
+							return;
+					}
+
+					window.webkit.messageHandlers.setWorldMap.postMessage({
+						worldMap: worldMap.worldMap,
+							callback: this._createPromiseCallback('setWorldMap', resolve)
+					})
+		})
+	}
+	
 
 	/* 
 	RACE CONDITION:  call stop, then watch:  stop does not set isWatching false until it gets a message back from the app,
@@ -551,19 +584,13 @@ export default class ARKitWrapper extends EventTarget {
 			}
 
 			console.log('----STOP');
-			if (!this._waitingForFirstWatch) {
-				window.webkit.messageHandlers.stopAR.postMessage({
-					callback: this._createPromiseCallback('stop', reject("session hadn't completed startup"))
-				})
-				this._waitingForFirstWatch = null
-			} else {
-				window.webkit.messageHandlers.stopAR.postMessage({
-					callback: this._createPromiseCallback('stop', resolve)
-				})
-			}
+			window.webkit.messageHandlers.stopAR.postMessage({
+				callback: this._createPromiseCallback('stop', resolve)
+			})
 		})
 	}
 	
+
 	/*
 	If not already watching, send a watchAR message to ARKit to request that it start sending per-frame data to onWatch
 	options: the options map for ARKit
@@ -577,33 +604,60 @@ export default class ARKitWrapper extends EventTarget {
 	*/
 
 	watch(options=null){
-		if (!this._isInitialized){
-			return false
-		}
-		if(this._isWatching){
-			return true
-		}
-		this._isWatching = true
+		return new Promise((resolve, reject) => {
+			if (!this._isInitialized){
+				reject("ARKitWrapper hasn't been initialized yet")
+				return 
+			}
+			if (this._waitingForSessionStart){
+				reject("ARKitWrapper startSession called, waiting to finish")
+				return 
+			}
+			if(this._isWatching){
+				resolve({
+					"cameraAccess": this._sessionCameraAccess,
+					"worldAccess": this._sessionWorldAccess,
+					"webXRAccess": true
+				})
+				return 
+			}
+			this._waitingForSessionStart = true
 
-		var newO = Object.assign({}, this._defaultOptions);
+			var newO = Object.assign({}, this._defaultOptions);
 
-		if(options != null) {
-			newO = Object.assign(newO, options)
-		}
+			if(options != null) {
+				newO = Object.assign(newO, options)
+			}
 
-		// option to WebXRView is different than the WebXR option
-		if (newO.videoFrames) {
-			delete newO.videoFrames
-			newO.computer_vision_data = true;
-		}
+			this._requestedPermissions.cameraAccess = newO.videoFrames
+			this._requestedPermissions.worldAccess = newO.worldSensing
 
-		const data = {
-			options: newO,
-			callback: this._globalCallbacksMap.onWatch
-		}
-		console.log('----WATCH');
-		window.webkit.messageHandlers.watchAR.postMessage(data)
-		return true
+			// option to WebXRView is different than the WebXR option
+			if (newO.videoFrames) {
+				delete newO.videoFrames
+				newO.computer_vision_data = true;
+			}
+			
+			const data = {
+				options: newO,
+				callback: this._createPromiseCallback('requestSession', (results) => {
+					if (!results.webXRAccess) {
+						reject("user did not give permission to start a webxr session")
+						return
+					}
+					this._waitingForSessionStart = false
+					this._isWatching = true
+					this._currentPermissions.cameraAccess = results.cameraAccess
+					this._currentPermissions.worldAccess = results.worldAccess
+		
+					resolve(results)
+				}),
+				data_callback: this._globalCallbacksMap.onData
+			}
+			console.log('----WATCH');
+			//window.webkit.messageHandlers.watchAR.postMessage(data)
+			window.webkit.messageHandlers.requestSession.postMessage(data) 
+		})
 	}
 
 	/*
@@ -625,54 +679,6 @@ export default class ARKitWrapper extends EventTarget {
 	*/
 	setUIOptions(options){
 		window.webkit.messageHandlers.setUIOptions.postMessage(options)
-	}
-
-	/*
-	Called during instance creation to send a message to ARKit to initialize and create a device ID
-	Usually results in ARKit calling back to _onInit with a deviceId
-	options: {
-		ui: {
-			browser: boolean,
-			points: boolean,
-			focus: boolean,
-			rec: boolean,
-			rec_time: boolean,
-			mic: boolean,
-			build: boolean,
-			plane: boolean,
-			warnings: boolean,
-			anchors: boolean,
-			debug: boolean,
-			statistics: boolean
-		}
-	}
-	*/
-	_sendInit(options){
-		// get device id
-		console.log('----INIT');
-		window.webkit.messageHandlers.initAR.postMessage({
-			options: options,
-			callback: this._globalCallbacksMap.onInit
-		})
-	}
-
-	/*
-	Callback for when ARKit is initialized
-	deviceId: DOMString with the AR device ID
-	*/
-	_onInit(deviceId){
-		this._deviceId = deviceId
-		this._isInitialized = true
-		try {
-			this.dispatchEvent(
-				ARKitWrapper.INIT_EVENT,
-				new CustomEvent(ARKitWrapper.INIT_EVENT, {
-					source: this
-				})
-			)
-        } catch(e) {
-            console.error('INIT_EVENT event error', e)
-        }
 	}
 
 	/*
@@ -707,7 +713,7 @@ export default class ARKitWrapper extends EventTarget {
 	*/
 	_createOrUpdateAnchorObject(element) {
 		if(element.plane_center){
-			var plane = this._planes.get(element.uuid);
+			var plane = this._meshes.get(element.uuid);
 			var anchor = this._anchors.get(element.uuid);
 
 			if(!plane){
@@ -724,7 +730,7 @@ export default class ARKitWrapper extends EventTarget {
 						anchor.dispatchEvent("replaceAnchor",
 							new CustomEvent("replaceAnchor", {
 								source: anchor,
-								detail: plane
+								detail: planeObject
 							})
 						)
 					} catch(e) {
@@ -734,7 +740,7 @@ export default class ARKitWrapper extends EventTarget {
 					this._anchors.delete(element.uuid)
 				} 
 
-				this._planes.set(element.uuid, {
+				this._meshes.set(element.uuid, {
 					id: element.uuid,
 					// center: element.plane_center,
 					// extent: [element.plane_extent.x, element.plane_extent.z],
@@ -759,9 +765,10 @@ export default class ARKitWrapper extends EventTarget {
 				element.object = plane.object
 			}
 		}else{
-			anchor = this._anchors.get(element.uuid);
+			var mesh = this._meshes.get(element.uuid);
+			var anchor = this._anchors.get(element.uuid);
 
-			if(!anchor || anchor.placeholder){
+			if((!mesh && !anchor) || anchor.placeholder){
 				let anchorObject
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
@@ -776,11 +783,11 @@ export default class ARKitWrapper extends EventTarget {
 				}
 
 				// if there is an old anchor, that was a placeholder, replace it
-				if (anchor) {
+				if (anchor || mesh) {
 					try {
 						anchor.dispatchEvent("replaceAnchor",
 							new CustomEvent("replaceAnchor", {
-								source: anchor,
+								source: anchor || mesh,
 								detail: anchorObject
 							})
 						)
@@ -789,13 +796,24 @@ export default class ARKitWrapper extends EventTarget {
 					}
 					console.log('replaced dummy anchor created from hit test with new anchor')
 				}
-				this._anchors.set(element.uuid, {
-					id: element.uuid,
-					object: anchorObject
-					// modelMatrix: element.transform
-				});
+				switch (element.type) {
+					case ARKitWrapper.ANCHOR_TYPE_FACE:
+						this._meshes.set(element.uuid, {
+							id: element.uuid,
+							object: anchorObject
+							// modelMatrix: element.transform
+						});
+						break;
+					default:
+						this._anchors.set(element.uuid, {
+							id: element.uuid,
+							object: anchorObject
+							// modelMatrix: element.transform
+						});
+				}
 				element.object = anchorObject
 			} else {
+				anchor = anchor || mesh
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
 						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes)
@@ -809,13 +827,67 @@ export default class ARKitWrapper extends EventTarget {
 			}
 		}
 	}
+	
 
-	_onWatch(data){
+
+	// we probably need to issue a perm request if they ask for more than
+	// we have asked for in the past.  So, if we ASK for worldSensing, we 
+	// won't ask again, but if we haven't, we will once
+	updateWorldSensingState(options) {
+		if (options.hasOwnProperty("illuminationDetectionState") && this._currentPermissions.worldAccess) {
+			this._worldSensingState.illuminationDetectionState = options.illuminationDetectionState.enabled || false
+		} else {
+			this._worldSensingState.illuminationDetectionState = false
+		}
+		if (options.hasOwnProperty("meshDetectionState") && this._currentPermissions.worldAccess) {
+			this._worldSensingState.meshDetectionState = options.meshDetectionState.enabled || false
+		} else {
+			this._worldSensingState.meshDetectionState = false
+		}
+		return this._worldSensingState
+	}
+
+	// lazilly create the _worldInformation 1 time per frame
+	getWorldInformation() {
+		if (this._worldInformation) {
+			return this._worldInformation
+		}
+
+		let state = {}
+		if (this._worldSensingState.illuminationDetectionState) {
+			state.estimatedLight = this._lightIntensity
+		}
+		if (this._worldSensingState.meshDetectionState) {
+			state.meshes = this._meshes.values()
+		}
+		this._worldInformation = state
+		return state
+	}
+
+	get hasData(){ return this._rawARData !== null } // True if this instance has received data via onWatch
+	
+	/*
+	_getData looks into the most recent ARKit data (as received by onWatch) for a key
+	returns the key's value or null if it doesn't exist or if a key is not specified it returns all data
+	*/
+	_getData(key=null){
+		if (!key){
+			return this._rawARData
+		}
+		if(this._rawARData && typeof this._rawARData[key] !== 'undefined'){
+			return this._rawARData[key]
+		}
+		return null
+	}	
+
+	_onData(data){
 		this._rawARData = data
 		var plane, anchor
 
+		this._worldInformation = null
+
 		this._timestamp = this._adjustARKitTime(data.timestamp)
-		this._lightIntensity = data.light_intensity;
+		this._lightIntensity.ambientIntensity = data.light_intensity;
 		mat4.copy(this._cameraTransform, data.camera_transform);
 		mat4.copy(this._viewMatrix, data.camera_view);
 		mat4.copy(this._projectionMatrix, data.projection_camera);
@@ -831,10 +903,10 @@ export default class ARKitWrapper extends EventTarget {
 		if(data.removedObjects.length){
 			for (let i = 0; i < data.removedObjects.length; i++) {
 				const element = data.removedObjects[i];
-				const plane = this._planes.get(element)
+				const plane = this._meshes.get(element)
 				if(plane){
 					plane.notifyOfRemoval();
-					this._planes.delete(element);
+					this._meshes.delete(element);
 				}else{
 					const anchor = this._anchors.get(element)
 					if (anchor) {
