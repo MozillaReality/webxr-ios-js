@@ -6,10 +6,12 @@ import * as mat3 from 'gl-matrix/src/gl-matrix/mat3'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
 import * as quat from 'gl-matrix/src/gl-matrix/quat'
 
-import XRHitResult from './extensions/XRHitResult.js'
+import API from './extensions/index';
 
-import ARKitDevice from './arkit/ARKitDevice.js'
-import ARKitWrapper from './arkit/ARKitWrapper.js'
+import ARKitDevice from './arkit/ARKitDevice'
+import ARKitWrapper from './arkit/ARKitWrapper'
+
+import XRHitResult from './extensions/XRHitResult'
 
 const _workingMatrix = mat4.create()
 const PI_OVER_180 = Math.PI / 180
@@ -228,7 +230,17 @@ function _installExtensions(){
 		XRFrameOfReference.prototype.getTransformTo = _xrFrameOfReferenceGetTransformTo
 	}
 
+	// inject Polyfill globals {
+	// Apply classes as globals
+	for (const className of Object.keys(API)) {
+		if (window[className] !== undefined) {
+			console.warn(`${className} already defined on global.`);
+		} else {
+			window[className] = API[className];
+		}
+	}
 
 }
 
 _installExtensions()
+

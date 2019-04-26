@@ -6,8 +6,8 @@ import XRAnchor from './XRAnchor.js'
 XRAnchorOffset represents a pose in relation to an XRAnchor
 */
 export default class XRAnchorOffset extends XRAnchor {
-	constructor(anchor, offset=null){
-		super(offset)
+	constructor(anchor, offset=null, timestamp){
+		super(offset, null, timestamp)
 		this._anchor = anchor
 		this._tempArray = new Float32Array(16)
 		this._offsetMatrix = mat4.create()
@@ -46,15 +46,10 @@ export default class XRAnchorOffset extends XRAnchor {
 
 	_handleAnchorUpdate() {
 		mat4.multiply(this._tempArray, anchor.modelMatrix, this._offsetMatrix)
-		this.modelMatrix = this._tempArray
-		// pass update up the chain
-		this.notifyOfRemoval()
+		this.updateModelMatrix(this._tempArray, this._timestamp)
 	}
 
 	get modelMatrix () { return this._transform }
-	set modelMatrix (transform) { 
-		throw new Error("can't set the modelMatrix on XRAnchorOffset")
-	}
 
 	get anchor(){ return this._anchor }
 
@@ -62,5 +57,6 @@ export default class XRAnchorOffset extends XRAnchor {
 	get offsetMatrix(){ return this._offsetMatrix }
 	set offsetMatrix(array16){
 		mat4.copy(this._offsetMatrix, array16)
+		this._handleAnchorUpdate()
 	}
 }

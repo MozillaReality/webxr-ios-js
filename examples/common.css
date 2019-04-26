@@ -10,6 +10,10 @@
     left:0px;
     right: 0px;
 }
+#description > * {
+    pointer-events: none;
+}
+
 .common-message {
     position: absolute;
     top: 50%;

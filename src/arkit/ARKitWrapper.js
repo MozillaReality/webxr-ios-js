@@ -1,17 +1,16 @@
-import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
-
-import * as hitTestUtils from './HitTestUtils.js';
-
 import EventTarget from 'webxr-polyfill/src/lib/EventTarget';
 import XRAnchor from '../extensions/XRAnchor';
 import XRAnchorOffset from '../extensions/XRAnchorOffset';
-import XRPlaneAnchor from '../extensions/XRPlaneAnchor'
+import XRPlaneMesh from '../extensions/XRPlaneMesh'
 import XRImageAnchor from '../extensions/XRImageAnchor'
-import XRFaceAnchor from '../extensions/XRFaceAnchor'
+import XRFaceMesh from '../extensions/XRFaceMesh'
 import XRVideoFrame from '../extensions/XRVideoFrame'
 import XRLightEstimate from '../extensions/XRLightEstimate'
 
 import base64 from "../lib/base64-binary.js";
+
+import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
+import XRMesh from '../extensions/XRMesh';
 
 /*	
 ARKitWrapper talks to Apple ARKit, as exposed by Mozilla's test ARDemo app.
@@ -98,6 +97,9 @@ export default class ARKitWrapper extends EventTarget {
 		this._timeOffsets = []
 		this._timeOffset = 0;
 		this._timeOffsetComputed = false;
+
+		// to see if we're getting more data events that we can handle
+		this._dataBeforeNext = 0
 
 		
 		/**
@@ -211,6 +213,11 @@ export default class ARKitWrapper extends EventTarget {
 			}
 			let uiOptions = (typeof(options.ui) == 'object') ? options.ui : {}
 			options.ui = Object.assign(defaultUIOptions, uiOptions)
+
+			options.geometry_arrays = true		// get the geomtry in flattened arrays
+			XRMesh.setUseGeomArrays()
+
+			
 			ARKitWrapper.GLOBAL_INSTANCE._sendInit(options)
 		} 
 		return ARKitWrapper.GLOBAL_INSTANCE
@@ -391,7 +398,9 @@ export default class ARKitWrapper extends EventTarget {
 
 	createAnchor(anchorInWorldMatrix) {
 		return new Promise((resolve, reject) => {
-			var anchor = new XRAnchor(anchorInWorldMatrix)
+			// create a placeholder anchor so we can use it's uid, and don't
+			// put it in the anchorlist yet, until the promise resolves
+			var anchor = new XRAnchor(anchorInWorldMatrix, this._timestamp)
 			this._addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
 				// of there was an error ...
 				if (detail.error) {
@@ -407,7 +416,7 @@ export default class ARKitWrapper extends EventTarget {
 					});
 				}else{
 					anchor = _anchor
-					anchor.modelMatrix = detail.transform;
+					anchor.updateModelMatrix(detail.transform, this._timestamp);
 				}
 
 				resolve(anchor)
@@ -427,7 +436,7 @@ export default class ARKitWrapper extends EventTarget {
 					anchor = this._meshes.get(hit.uuid)
 
 					if (!anchor) {
-						anchor = new XRAnchor(hit.anchor_transform, hit.uuid)
+						anchor = new XRAnchor(hit.anchor_transform, hit.uuid, this._timestamp)
 						console.log('created dummy anchor from hit test')
 						// mark this as possibly needing replacement
 						anchor.placeholder = true;
@@ -717,12 +726,12 @@ export default class ARKitWrapper extends EventTarget {
 			var anchor = this._anchors.get(element.uuid);
 
 			if(!plane){
-				var planeObject = new XRPlaneAnchor(element.transform,
-					element.uuid,
+				var planeObject = new XRPlaneMesh(element.transform,
 					element.plane_center,
 					[element.plane_extent.x, element.plane_extent.z],
 					element.plane_alignment,
-					element.geometry)
+					element.geometry,
+					element.uuid, this._timestamp)
 
 				// check if we created a fake anchor for this as a result of hit testing
 				if (anchor) {
@@ -756,29 +765,24 @@ export default class ARKitWrapper extends EventTarget {
 				// plane.modelMatrix = element.transform
 				// plane.alignment = element.plane_alignment
 				// plane.geometry = element.geometry
-				plane.object.updatePlaneData(element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry)
-
-				if (!mat4.equals(plane.object.modelMatrix, element.transform)) {
-					plane.object.modelMatrix = element.transform
-					plane.object.notifyOfUpdate();
-				}
+				plane.object.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp)
 				element.object = plane.object
 			}
 		}else{
 			var mesh = this._meshes.get(element.uuid);
 			var anchor = this._anchors.get(element.uuid);
 
-			if((!mesh && !anchor) || anchor.placeholder){
+			if((!anchor && !mesh) || (anchor && anchor.placeholder)){
 				let anchorObject
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						anchorObject = new XRFaceAnchor(element.transform, element.uuid, element.geometry, element.blendShapes)
+						anchorObject = new XRFaceMesh(element.transform, element.geometry, element.blendShapes,  element.uuid, this._timestamp)
 						break
 					case ARKitWrapper.ANCHOR_TYPE_ANCHOR:
-						anchorObject = new XRAnchor(element.transform, element.uuid)
+						anchorObject = new XRAnchor(element.transform, element.uuid, this._timestamp)
 						break
 					case ARKitWrapper.ANCHOR_TYPE_IMAGE:
-						anchorObject = new XRImageAnchor(element.transform, element.uuid)
+						anchorObject = new XRImageAnchor(element.transform, element.uuid, this._timestamp)
 						break
 				}
 
@@ -816,12 +820,11 @@ export default class ARKitWrapper extends EventTarget {
 				anchor = anchor || mesh
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes)
+						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp)
 						break
-				}
-				if (!mat4.equals(anchor.object.modelMatrix, element.transform)) {
-					anchor.object.modelMatrix = element.transform
-					anchor.object.notifyOfUpdate();
+					default:
+						anchor.object.updateModelMatrix(element.transform, this._timestamp)
+						break;
 				}
 				element.object = anchor.object
 			}
@@ -858,7 +861,14 @@ export default class ARKitWrapper extends EventTarget {
 			state.estimatedLight = this._lightIntensity
 		}
 		if (this._worldSensingState.meshDetectionState) {
-			state.meshes = this._meshes.values()
+			state.meshes = []
+			this._meshes.forEach(mesh => { 
+				// there is a chance that mesh-related anchors will be created before they
+				// have any geometry.  Only return ones with meshes
+				if (mesh.object.vertexPositions.length > 0) { 
+					state.meshes.push(mesh.object) 
+				}
+			})
 		}
 		this._worldInformation = state
 		return state
@@ -880,10 +890,25 @@ export default class ARKitWrapper extends EventTarget {
 		return null
 	}	
 
+	// this should be called after a frame has been processed.  Can't do it below because
+	// we don't know if we'll get data faster than we can render
+	finishedRender() { 
+		this._dataBeforeNext = 0
+		this._meshes.forEach(mesh => { mesh.object.clearChanged() })
+		this._anchors.forEach(anchor => { anchor.object.clearChanged() })
+	}
+
+	startingRender() {
+		if (this._dataBeforeNext > 1) {
+			console.warn("More than one Data packet since last render", this._dataBeforeNext)
+		}
+	}
+  
 	_onData(data){
 		this._rawARData = data
 		var plane, anchor
 
+		this._dataBeforeNext++  
 		this._worldInformation = null
 
 		this._timestamp = this._adjustARKitTime(data.timestamp)
@@ -893,6 +918,7 @@ export default class ARKitWrapper extends EventTarget {
 		mat4.copy(this._projectionMatrix, data.projection_camera);
 		this._worldMappingStatus = data.worldMappingStatus;
 
+		
 		if(data.newObjects.length){
 			for (let i = 0; i < data.newObjects.length; i++) {
 				const element = data.newObjects[i];
@@ -905,12 +931,12 @@ export default class ARKitWrapper extends EventTarget {
 				const element = data.removedObjects[i];
 				const plane = this._meshes.get(element)
 				if(plane){
-					plane.notifyOfRemoval();
+					plane.object.notifyOfRemoval();
 					this._meshes.delete(element);
 				}else{
 					const anchor = this._anchors.get(element)
 					if (anchor) {
-						anchor.notifyOfRemoval();
+						anchor.object.notifyOfRemoval();
 						this._anchors.delete(element);
 					} else {
 						console.error("app signalled removal of non-existant anchor/plane")

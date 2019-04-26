@@ -6,27 +6,39 @@ XRAnchors provide per-frame coordinates which the system attempts to pin "in pla
 They may change pose on a per-frame bases as the system refines its map.
 */
 export default class XRAnchor extends EventTarget {
-	constructor(transform, uid=null){
+	constructor(transform, geometry, uid=null, timestamp = 0){
 		super();
 		this._uid = uid || XRAnchor._generateUID()
 		this._transform = mat4.clone(transform)
+		this._timestamp = timestamp
+		this._poseChanged = true
+	}
+
+	get timeStamp () { return this._timestamp }
+	get changed () { return this._poseChanged }
+	
+	clearChanged() {
+		this._poseChanged = false;
 	}
 
 	get modelMatrix () {  return this._transform };
 
-	set modelMatrix (transform) { 
-		// don't know if the transform is a FloatArray32
-		for ( var i = 0; i < 16; i ++ ) {
-			this._transform[ i ] = transform[ i ];
-		}
-	}
+	updateModelMatrix (transform, timestamp) { 
+		this._timestamp = timestamp
 
-	notifyOfUpdate() {
-		try {
-			this.dispatchEvent( "update", { source: this })
-		} catch(e) {
-			console.error('XRAnchor update event error', e)
-		}
+		if (!mat4.equals(this._transform, transform)) {
+			this._poseChanged = true
+
+			// don't know if the transform is a FloatArray32
+			for ( var i = 0; i < 16; i ++ ) {
+				this._transform[ i ] = transform[ i ];
+			}
+			try {
+				this.dispatchEvent( "update", { source: this })
+			} catch(e) {
+				console.error('XRAnchor update event error', e)
+			}
+		}	
 	}
 
 	notifyOfRemoval() {

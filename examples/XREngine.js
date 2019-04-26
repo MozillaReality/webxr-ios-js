@@ -101,6 +101,13 @@ export default class XREngine {
 	}
 	
 	addAxesHelper( position=[0,0,0], size=[1,1,1] ) {
+		let helper = this.createAxesHelper(size)
+		helper.position.set(...position)
+		this._scene.add(helper)
+		return helper;
+	}
+
+	createAxesHelper (size=[1,1,1]) {
 		var vertices = [
 			0, 0, 0,	size[0], 0, 0,
 			0, 0, 0,	0, size[1], 0,
@@ -120,8 +127,6 @@ export default class XREngine {
 		var material = new THREE.LineBasicMaterial( { vertexColors: THREE.VertexColors } );
 
 		var helper = new THREE.LineSegments(geometry, material);
-		helper.position.set(...position)
-		this._scene.add(helper)
 		return helper;
 	}
 
@@ -156,7 +161,7 @@ export default class XREngine {
 	anchoredNodeRemoved(node) {}
 	
 	_handleAnchorDelete(details) {
-		let anchor = event.source
+		let anchor = details.source
 		throttledConsoleLog('Anchor deleted: uid', anchor.uid)
 
 		const anchoredNode = this._anchoredNodes.get(anchor.uid)
@@ -184,15 +189,13 @@ export default class XREngine {
 	/* 
 	Remove a node from the scene
 	*/
-	removeAnchoredNode(node) {
-		if (node.anchor) {
-			const anchoredNode = this._anchoredNodes.get(node.anchor.uid)
-			if (anchoredNode) {
-				this.anchoredNodeRemoved(node);
-				this._anchoredNodes.delete(node.anchor.uid);
-				this._scene.remove(node)
-				return;
-			}
+	removeAnchoredNode(anchor) {
+		const anchoredNode = this._anchoredNodes.get(anchor.uid)
+		if (anchoredNode) {
+			this.anchoredNodeRemoved(anchoredNode.node);
+			this._anchoredNodes.delete(anchor.uid);
+			this._scene.remove(anchoredNode.node)
+			return;
 		}
 	}
 	
