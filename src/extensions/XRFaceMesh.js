@@ -44,8 +44,7 @@ export default class XRFaceMesh extends XRMesh {
         this._updateBlendShapes(blendShapeArray)
 	}
 
-	get blendShapes() { return this._blendShapes }
-	get geometry() { return this._geometry }
+    get blendShapes() { return this._blendShapes }
 }
 
 const blendShapeNames = [

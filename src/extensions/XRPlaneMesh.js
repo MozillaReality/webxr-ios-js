@@ -54,96 +54,68 @@ export default class XRPlaneMesh extends XRMesh {
 	get extent() { return this._extent }
 	get alignment() { return this._alignment }
 
+	get boundaryVertices () { return this._boundaryVertices }
+	get boundaryVerticesChanged () { return this._boundaryVerticesChanged }
+	get boundaryVertexCount () { return this._boundaryVertices.length }
+
 	_updateGeometry(geometry) {
 		super._updateGeometry(geometry)
 		let g = geometry
+
+		const n = vec4.transformMat4(this._normal, this._yAxis, this._transform)
+		const nx = n[0], ny = n[1], nz = n[2]			
 
 		let currentVertexIndex = 0
 		if (this._boundaryVertices.length != g.boundaryVertexCount * 3) {
 			this._boundaryVerticesChanged = true
 			this._boundaryVertices = new Float32Array( g.vertexCount * 3 );
-			currentVertexIndex = 0
+
+			this._vertexNormalsChanged = true
+			this._vertexNormals = new Float32Array( g.vertexCount * 3 );
+		} else {
+			this._boundaryVerticesChanged = true
+			if (this._useGeomArrays) {
+                this._vertexPositionsChanged = XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
+            } else {
+                this._boundaryVerticesChanged = false
+                currentVertexIndex = 0
+                for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
+                    if (Math.abs(this._boundaryVertices[currentVertexIndex++] - g.boundaryVertices[i].x) > glMatrix.EPSILON ||
+                        Math.abs(this._boundaryVertices[currentVertexIndex++] - g.boundaryVertices[i].y) > glMatrix.EPSILON ||
+                        Math.abs(this._boundaryVertices[currentVertexIndex++] - g.boundaryVertices[i].z) > glMatrix.EPSILON) 
+                    {
+                        this._boundaryVerticesChanged = true
+                        break
+                    }
+				}
+				
+				this._vertexNormalsChanged = 
+					(Math.abs(this._vertexNormals[0] - nx) > glMatrix.EPSILON || 
+					Math.abs(this._vertexNormals[1] - ny) > glMatrix.EPSILON || 
+					Math.abs(this._vertexNormals[2] - nz) > glMatrix.EPSILON) 
+			}
+		}
+
+		if (this._boundaryVerticesChanged) {
             if (this._useGeomArrays) {
                 this._boundaryVertices.set(g.boundaryVertices)
             } else {
+				currentVertexIndex = 0
 				for (let vertex of g.boundaryVertices) {
 					this._boundaryVertices[currentVertexIndex++] = vertex.x
 					this._boundaryVertices[currentVertexIndex++] = vertex.y
 					this._boundaryVertices[currentVertexIndex++] = vertex.z
 				}
 			}
-		} else {
-			this._boundaryVerticesChanged = false
-			currentVertexIndex = 0
-            if (this._useGeomArrays) {
-                for (let t of g.boundaryVertices) {
-                    if (this._boundaryVerticesChanged) {
-                        this._boundaryVertices[currentVertexIndex++] = t
-                    } else {
-                        if (this._boundaryVertices[currentVertexIndex] != t) {
-                            this._boundaryVerticesChanged = true
-                            this._boundaryVertices[currentVertexIndex++] = t
-                        } else {
-                            currentVertexIndex++
-                        }
-                    }
-                }
-            } else {
-				for (let vertex of g.boundaryVertices) {
-					if (this._boundaryVerticesChanged) {
-						this._boundaryVertices[currentVertexIndex++] = vertex.x
-						this._boundaryVertices[currentVertexIndex++] = vertex.y
-						this._boundaryVertices[currentVertexIndex++] = vertex.z
-					} else {
-						if (Math.abs(this._boundaryVertices[currentVertexIndex] - vertex.x) > glMatrix.EPSILON) {
-							this._boundaryVerticesChanged = true
-							this._boundaryVertices[currentVertexIndex++] = vertex.x
-						} else {
-							currentVertexIndex++
-						}
-						if (Math.abs(this._boundaryVertices[currentVertexIndex] - vertex.y) > glMatrix.EPSILON) {
-							this._boundaryVerticesChanged = true
-							this._boundaryVertices[currentVertexIndex++] = vertex.y
-						} else {
-							currentVertexIndex++
-						}
-						if (Math.abs(this._boundaryVertices[currentVertexIndex] - vertex.z) > glMatrix.EPSILON) {
-							this._boundaryVerticesChanged = true
-							this._boundaryVertices[currentVertexIndex++] = vertex.z
-						} else {
-							currentVertexIndex++
-						}
-					}
-				}
-			}
-		}
-		if (this._vertexNormals.length != g.vertexCount * 3) {
+		} 
+
+		if (this._vertexNormalsChanged) {
 			// compute normals from face normal
-			this._vertexNormalsChanged = true
-			const n = vec4.transformMat4(this._normal, this._yAxis, this._transform)
-			const nx = n[0], ny = n[1], nz = n[2]			
-			this._vertexNormals = new Float32Array( g.vertexCount * 3 );
 			currentVertexIndex = 0
 			for (var i = 0; i < g.vertexCount; i++) {
 				this._vertexNormals[currentVertexIndex++] = nx
 				this._vertexNormals[currentVertexIndex++] = ny
 				this._vertexNormals[currentVertexIndex++] = nz
-			}
-		} else {
-			this._vertexNormalsChanged = false
-			const n = vec4.transformMat4(this._normal, this._yAxis, this._transform)
-			const nx = n[0], ny = n[1], nz = n[2]			
-			if (Math.abs(this._vertexNormals[0] - nx) > glMatrix.EPSILON || 
-				Math.abs(this._vertexNormals[1] - ny) > glMatrix.EPSILON || 
-				Math.abs(this._vertexNormals[2] - nz) > glMatrix.EPSILON) {
-
-				this._vertexNormalsChanged = true
-				currentVertexIndex = 0
-				for (var i = 0; i < g.vertexCount; i++) {
-					this._vertexNormals[currentVertexIndex++] = nx
-					this._vertexNormals[currentVertexIndex++] = ny
-					this._vertexNormals[currentVertexIndex++] = nz
-				}
 			}
 		}
 	}
