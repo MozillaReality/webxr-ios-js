@@ -3,7 +3,7 @@
         <title>Show What Information is Being Sensed in the World</title>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-        <script src="../libs/three.js"></script>
+        <script src="../libs/three.min.js"></script>
         <script module src="../../dist/webxr.js"></script>
         <script src="../libs/three-gltf-loader.js"></script>
         <link rel="stylesheet" href="../common.css"/>
@@ -99,9 +99,9 @@
                         var object = meshMap.get(worldMesh.uid);
                         if (object) {
                             handleUpdateNode(worldMesh, object)
-                        } else (
+                        } else {
                             handleNewNode(worldMesh)
-                        )
+                        }
                     })
 
                     meshMap.forEach(object => { 
@@ -164,6 +164,7 @@
             }
 
             function handleRemoveNode(worldMesh, object) {
+                object.threeMesh.geometry.dispose()
                 engine.removeAnchoredNode(worldMesh);
                 meshMap.delete(worldMesh.uid)
             }
