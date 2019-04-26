@@ -115,6 +115,11 @@
             function handleUpdateNode(worldMesh, object) {
                 object.seen = true
 
+                // we don't need to do anything if the timestamp isn't updated
+                if (worldMesh.timeStamp <= object.ts) {
+                    return;
+                }
+
                 if (worldMesh.vertexCountChanged) {
                     let newMesh = newMeshNode(worldMesh)
                     object.threeMesh.geometry.dispose()
@@ -177,7 +182,13 @@
                 //worldMesh.node = worldMeshGroup;
                 engine.addAnchoredNode(worldMesh, worldMeshGroup)
 
-                meshMap.set(worldMesh.uid, {worldMesh: worldMesh, node: worldMeshGroup, seen: true, threeMesh: mesh})
+                meshMap.set(worldMesh.uid, {
+                    ts: worldMesh.timeStamp, 
+                    worldMesh: worldMesh, 
+                    node: worldMeshGroup, 
+                    seen: true, 
+                    threeMesh: mesh
+                })
             }
 
             function newMeshNode(worldMesh) {
