@@ -107,7 +107,15 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	}
 
 	requestAnimationFrame(callback){
-		return window.requestAnimationFrame(callback)
+		return window.requestAnimationFrame((...params) => {
+			this._arKitWrapper.startingRender()
+			try {
+				callback(...params)
+			} catch(e) {
+				console.error('application callback error: ', e)
+			}	
+			this._arKitWrapper.finishedRender()
+		})
 	}
 
 	cancelAnimationFrame(handle){
