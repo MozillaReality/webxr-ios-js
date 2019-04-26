@@ -130,11 +130,11 @@ export default class XRMesh extends XRAnchor {
             this._triangleIndicesChanged = true
 			this._triangleIndices = XRMesh.arrayMax(g.triangleIndices) > 65535 ? new Uint32Array( g.triangleCount * 3) :  new Uint32Array( g.triangleCount * 3)
         } else {
-            this._triangleIndicesChanged = XRMesh.arrayEquals(this._triangleIndices, g.triangleIndices)
+            this._triangleIndicesChanged = g.triangleIndicies && !XRMesh.arrayEquals(this._triangleIndices, g.triangleIndices)
 
             if (this._useGeomArrays) {
-                this._vertexPositionsChanged = XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
-                this._textureCoordinatesChanged = XRMesh.arrayFuzzyEquals(this._textureCoordinates, g.textureCoordinates)
+                this._vertexPositionsChanged = !XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
+                this._textureCoordinatesChanged = g.textureCoordinates && !XRMesh.arrayFuzzyEquals(this._textureCoordinates, g.textureCoordinates)
             } else {
                 this._vertexPositionsChanged = false
                 currentVertexIndex = 0
@@ -148,13 +148,15 @@ export default class XRMesh extends XRAnchor {
                     }
                 }
                 this._textureCoordinatesChanged = false
-                currentVertexIndex = 0
-                for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
-                    if (Math.abs(this._textureCoordinates[currentVertexIndex++] - g.textureCoordinates[i].x) > glMatrix.EPSILON ||
-                        Math.abs(this._textureCoordinates[currentVertexIndex++] - g.textureCoordinates[i].x) > glMatrix.EPSILON) 
-                    {
-                        this._textureCoordinatesChanged = true
-                        break;
+                if (g.textureCoordinates) {
+                    currentVertexIndex = 0
+                    for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
+                        if (Math.abs(this._textureCoordinates[currentVertexIndex++] - g.textureCoordinates[i].x) > glMatrix.EPSILON ||
+                            Math.abs(this._textureCoordinates[currentVertexIndex++] - g.textureCoordinates[i].x) > glMatrix.EPSILON) 
+                        {
+                            this._textureCoordinatesChanged = true
+                            break;
+                        }
                     }
                 }
             }

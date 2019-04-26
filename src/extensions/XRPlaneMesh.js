@@ -62,6 +62,7 @@ export default class XRPlaneMesh extends XRMesh {
 		super._updateGeometry(geometry)
 		let g = geometry
 
+		// compute normals from face normal
 		const n = vec4.transformMat4(this._normal, this._yAxis, this._transform)
 		const nx = n[0], ny = n[1], nz = n[2]			
 
@@ -73,9 +74,12 @@ export default class XRPlaneMesh extends XRMesh {
 			this._vertexNormalsChanged = true
 			this._vertexNormals = new Float32Array( g.vertexCount * 3 );
 		} else {
-			this._boundaryVerticesChanged = true
+			this._vertexNormalsChanged = (Math.abs(this._vertexNormals[0] - nx) > glMatrix.EPSILON || 
+					Math.abs(this._vertexNormals[1] - ny) > glMatrix.EPSILON || 
+					Math.abs(this._vertexNormals[2] - nz) > glMatrix.EPSILON) 
+
 			if (this._useGeomArrays) {
-                this._vertexPositionsChanged = XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
+                this._vertexPositionsChanged = !XRMesh.arrayFuzzyEquals(this._boundaryVertices, g.boundaryVertices)
             } else {
                 this._boundaryVerticesChanged = false
                 currentVertexIndex = 0
@@ -88,11 +92,6 @@ export default class XRPlaneMesh extends XRMesh {
                         break
                     }
 				}
-				
-				this._vertexNormalsChanged = 
-					(Math.abs(this._vertexNormals[0] - nx) > glMatrix.EPSILON || 
-					Math.abs(this._vertexNormals[1] - ny) > glMatrix.EPSILON || 
-					Math.abs(this._vertexNormals[2] - nz) > glMatrix.EPSILON) 
 			}
 		}
 
@@ -110,7 +109,6 @@ export default class XRPlaneMesh extends XRMesh {
 		} 
 
 		if (this._vertexNormalsChanged) {
-			// compute normals from face normal
 			currentVertexIndex = 0
 			for (var i = 0; i < g.vertexCount; i++) {
 				this._vertexNormals[currentVertexIndex++] = nx
