@@ -78,10 +78,17 @@ export default class XRMesh extends XRAnchor {
 
     get vertexPositions () { return this._vertexPositions }
     get vertexNormals () { return this._vertexNormals }
-    get triangleIndices () { return this._triangleIndices} 
+    get triangleIndices () { return this._triangleIndices}
     get textureCoordinates () { return this._textureCoordinates}
 
-	_updateGeometry(geometry) {
+    get vertexCount () { return this._vertexPositions.length }
+    get triangleCount () { return this._triangleIndices.length } 
+
+    // textureCoordinates and Normals are optional
+    get hasNormals () { return this._vertexNormals.length > 0 }
+    get hasTextureCoordinates () { return this._textureCoordinates.length > 0}
+
+    _updateGeometry(geometry) {
         this._geometry = geometry
         let g = geometry
         
@@ -117,22 +124,55 @@ export default class XRMesh extends XRAnchor {
             this._vertexPositionsChanged = true
             this._vertexPositions = new Float32Array( g.vertexCount * 3 );
 
+            this._textureCoordinatesChanged = true
+			this._textureCoordinates = new Float32Array( g.vertexCount * 2 );
+
+            this._triangleIndicesChanged = true
+			this._triangleIndices = XRMesh.arrayMax(g.triangleIndices) > 65535 ? new Uint32Array( g.triangleCount * 3) :  new Uint32Array( g.triangleCount * 3)
+        } else {
+            this._triangleIndicesChanged = XRMesh.arrayEquals(this._triangleIndices, g.triangleIndices)
+
+            if (this._useGeomArrays) {
+                this._vertexPositionsChanged = XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
+                this._textureCoordinatesChanged = XRMesh.arrayFuzzyEquals(this._textureCoordinates, g.textureCoordinates)
+            } else {
+                this._vertexPositionsChanged = false
+                currentVertexIndex = 0
+                for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
+                    if (Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].x) > glMatrix.EPSILON ||
+                        Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].y) > glMatrix.EPSILON ||
+                        Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].z) > glMatrix.EPSILON) 
+                    {
+                        this._vertexPositionsChanged = true
+                        break;
+                    }
+                }
+                this._textureCoordinatesChanged = false
+                currentVertexIndex = 0
+                for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
+                    if (Math.abs(this._textureCoordinates[currentVertexIndex++] - g.textureCoordinates[i].x) > glMatrix.EPSILON ||
+                        Math.abs(this._textureCoordinates[currentVertexIndex++] - g.textureCoordinates[i].x) > glMatrix.EPSILON) 
+                    {
+                        this._textureCoordinatesChanged = true
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (this._vertexPositionsChanged) {
             if (this._useGeomArrays) {
                 this._vertexPositions.set(g.vertices)
             } else {
+                currentVertexIndex = 0
                 for (let vertex of g.vertices) {
                     this._vertexPositions[currentVertexIndex++] = vertex.x
                     this._vertexPositions[currentVertexIndex++] = vertex.y
                     this._vertexPositions[currentVertexIndex++] = vertex.z
                 }
             }
-
-            this._triangleIndicesChanged = true
-			this._triangleIndices = arrayMax(g.triangleIndices) > 65535 ? new Uint32Array( g.triangleCount * 3) :  new Uint32Array( g.triangleCount * 3)
-			this._triangleIndices.set(g.triangleIndices)
-
-			this._textureCoordinatesChanged = true
-			this._textureCoordinates = new Float32Array( g.vertexCount * 2 );
+        }
+        if (this._textureCoordinatesChanged) {
 			currentVertexIndex = 0
             if (this._useGeomArrays) {
                 this._textureCoordinates.set(g.textureCoordinates)
@@ -142,149 +182,52 @@ export default class XRMesh extends XRAnchor {
                     this._textureCoordinates[currentVertexIndex++] = tc.y
                 }
 			}
-		} else {
-            // hard case: same number of vertices.  Have any actually changed?
-            this._vertexPositionsChanged = false
-
-            if (this._useGeomArrays) {
-                for (let t of g.vertices) {
-                    if (this._vertexPositionsChanged) {
-                        this._vertexPositions[currentVertexIndex++] = t
-                    } else {
-                        if (this._vertexPositions[currentVertexIndex] != t) {
-                            this._vertexPositionsChanged = true
-                            this._vertexPositions[currentVertexIndex++] = t
-                        } else {
-                            currentVertexIndex++
-                        }
-                    }
-                }
-            } else {
-                for (let vertex of g.vertices) {
-                    if (this._vertexPositionsChanged) {
-                        this._vertexPositions[currentVertexIndex++] = vertex.x
-                        this._vertexPositions[currentVertexIndex++] = vertex.y
-                        this._vertexPositions[currentVertexIndex++] = vertex.z
-                    } else {
-                        if (Math.abs(this._vertexPositions[currentVertexIndex] - vertex.x) > glMatrix.EPSILON) {
-                            this._vertexPositionsChanged = true
-                            this._vertexPositions[currentVertexIndex++] = vertex.x
-                        } else {
-                            currentVertexIndex++
-                        }
-                        if (Math.abs(this._vertexPositions[currentVertexIndex] - vertex.y) > glMatrix.EPSILON) {
-                            this._vertexPositionsChanged = true
-                            this._vertexPositions[currentVertexIndex++] = vertex.y
-                        } else {
-                            currentVertexIndex++
-                        }
-                        if (Math.abs(this._vertexPositions[currentVertexIndex] - vertex.z) > glMatrix.EPSILON) {
-                            this._vertexPositionsChanged = true
-                            this._vertexPositions[currentVertexIndex++] = vertex.z
-                        } else {
-                            currentVertexIndex++
-                        }
-                    }
-                }
-            }
-            this._triangleIndicesChanged = false
-            if (g.triangleIndices) {
-                currentVertexIndex = 0
-                for (let t of g.triangleIndices) {
-                    if (this._triangleIndicesChanged) {
-                        this._triangleIndices[currentVertexIndex++] = t
-                    } else {
-                        if (this._triangleIndices[currentVertexIndex] != t) {
-                            this._triangleIndicesChanged = true
-                            this._triangleIndices[currentVertexIndex++] = t
-                        } else {
-                            currentVertexIndex++
-                        }
-                    }
-                }
-            }
-            
-            this._textureCoordinatesChanged = false
-            if (g._textureCoordinates) {
-                if (this._useGeomArrays) {
-                    for (let t of g.textureCoordinates) {
-                        if (this._textureCoordinatesChanged) {
-                            this._textureCoordinates[currentVertexIndex++] = t
-                        } else {
-                            if (this._textureCoordinates[currentVertexIndex] != t) {
-                                this._textureCoordinatesChanged = true
-                                this._textureCoordinates[currentVertexIndex++] = t
-                            } else {
-                                currentVertexIndex++
-                            }
-                        }
-                    }
-                } else {
-                    for (let vertex of g.textureCoordinates) {
-                        if (this._textureCoordinatesChanged) {
-                            this._textureCoordinates[currentVertexIndex++] = vertex.x
-                            this._textureCoordinates[currentVertexIndex++] = vertex.y
-                        } else {
-                            if (Math.abs(this._textureCoordinates[currentVertexIndex] - vertex.x) > glMatrix.EPSILON) {
-                                this._textureCoordinatesChanged = true
-                                this._textureCoordinates[currentVertexIndex++] = vertex.x
-                            } else {
-                                currentVertexIndex++
-                            }
-                            if (Math.abs(this._textureCoordinates[currentVertexIndex] - vertex.y) > glMatrix.EPSILON) {
-                                this._textureCoordinatesChanged = true
-                                this._textureCoordinates[currentVertexIndex++] = vertex.y
-                            } else {
-                                currentVertexIndex++
-                            }
-                        }
-                    }
-                }
-            }
+        }
+        if (this._triangleIndicesChanged) {
+            this._triangleIndices.set(g.triangleIndices)            
         }
     }
-}
 
+    static arrayMax( array ) {
+        if ( array.length === 0 ) return - Infinity;
+        var max = array[ 0 ];
+        for ( var i = 1, l = array.length; i < l; ++ i ) {
+            if ( array[ i ] > max ) max = array[ i ];
+        }
+        return max;
+    }
 
-function arrayMax( array ) {
-	if ( array.length === 0 ) return - Infinity;
-	var max = array[ 0 ];
-	for ( var i = 1, l = array.length; i < l; ++ i ) {
-		if ( array[ i ] > max ) max = array[ i ];
-	}
-	return max;
-}
+    static arrayEquals(a, b) {
+        // if the other array is a falsy value, return
+        if (!a || !b)
+            return false;
 
-function arrayEquals(a, b) {
-    // if the other array is a falsy value, return
-    if (!a || !b)
-        return false;
+        // compare lengths - can save a lot of time 
+        if (a.length != b.length)
+            return false;
 
-    // compare lengths - can save a lot of time 
-    if (a.length != b.length)
-        return false;
+        for (var i = 0, l=a.length; i < l; i++) {
+            if (a[i] != b[i]) { 
+                return false;   
+            }           
+        }       
+        return true;
+    }
 
-    for (var i = 0, l=a.length; i < l; i++) {
-        if (a[i] != b[i]) { 
-            return false;   
-        }           
-    }       
-    return true;
-}
+    static arrayFuzzyEquals(a, b) {
+        // if the other array is a falsy value, return
+        if (!a || !b)
+            return false;
 
-function arrayFuzzyEquals(a, b) {
-    // if the other array is a falsy value, return
-    if (!a || !b)
-        return false;
+        // compare lengths - can save a lot of time 
+        if (a.length != b.length)
+            return false;
 
-    // compare lengths - can save a lot of time 
-    if (a.length != b.length)
-        return false;
-
-    for (var i = 0, l=a.length; i < l; i++) {
-        if (Math.abs(a[i] - b[i]) > glMatrix.EPSILON) {
-            return false;   
-        }           
-    }       
-    return true;
+        for (var i = 0, l=a.length; i < l; i++) {
+            if (Math.abs(a[i] - b[i]) > glMatrix.EPSILON) {
+                return false;   
+            }           
+        }       
+        return true;
+    }
 }
