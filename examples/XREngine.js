@@ -39,7 +39,7 @@ export default class XREngine {
 		this._camera.updateMatrixWorld()
 		this._camera.projectionMatrix.fromArray(projectionMatrix)
 
-		this.renderer.setSize(this._glCanvas.width, this._glCanvas.height, false)
+		this._renderer.setSize(this._glCanvas.width, this._glCanvas.height, false)
 		this._renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
 		this._renderer.clearDepth()
 		this._renderer.render(this._scene, this._camera)
@@ -150,7 +150,7 @@ export default class XREngine {
 		this._scene.add(node)
 
 		anchor.addEventListener("update", this._handleAnchorUpdate.bind(this))
-		anchor.addEventListener("removed", this._handleAnchorDelete.bind(this))
+		anchor.addEventListener("remove", this._handleAnchorDelete.bind(this))
 	
 		return node
 	}
@@ -189,11 +189,15 @@ export default class XREngine {
 	/* 
 	Remove a node from the scene
 	*/
-	removeAnchoredNode(anchor) {
-		const anchoredNode = this._anchoredNodes.get(anchor.uid)
+	removeAnchoredNode(node) {
+		if (!node.anchor) {
+			console.error("trying to remove unanchored node with removeAnchoredNode")
+			return;
+		}
+		const anchoredNode = this._anchoredNodes.get(node.anchor.uid)
 		if (anchoredNode) {
 			this.anchoredNodeRemoved(anchoredNode.node);
-			this._anchoredNodes.delete(anchor.uid);
+			this._anchoredNodes.delete(node.anchor.uid);
 			this._scene.remove(anchoredNode.node)
 			return;
 		}

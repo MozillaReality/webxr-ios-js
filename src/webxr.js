@@ -179,6 +179,31 @@ async function /*Promise<XRAnchor>*/ _removeAnchor(anchor) {
 	})
 }
 
+
+/************************** 
+ * iOS specific things, not sure where to put these yet
+*/
+
+function _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+	return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters)
+}
+
+function _activateDetectionImage(uid) {
+	return  _arKitWrapper.activateDetectionImage(uid)
+}
+
+function _getWorldMap() {
+	return _arKitWrapper.getWorldMap()
+}
+
+function _setWorldMap(worldMap) {
+	return _arKitWrapper.setWorldMap(worldMap)
+}
+
+function _getWorldMappingStatus() {
+	return arKitWrapper.worldMappingStatus;
+}
+
 // function _getAnchor(uid) {
 // 	if (!this._anchors) { return null}
 // 	return this._anchors.get(uid) || null
@@ -221,6 +246,14 @@ function _installExtensions(){
 		// XRSession.prototype._getAnchor = _getAnchor
 		// XRSession.prototype._deleteAnchor = _deleteAnchor
 		XRSession.prototype.removeAnchor = _removeAnchor
+
+
+		// use "nonStandard" to signify these are unlikely to be standardized 
+		XRSession.prototype.nonStandard_createDetectionImage = _createDetectionImage
+		XRSession.prototype.nonStandard_activateDetectionImage = _activateDetectionImage
+		XRSession.prototype.nonStandard_getWorldMap = _getWorldMap
+		XRSession.prototype.nonStandard_setWorldMap = _setWorldMap
+		XRSession.prototype.nonStandard_getWorldMappingStatus = _getWorldMappingStatus
 	}
 	
 	if(window.XRFrame) {

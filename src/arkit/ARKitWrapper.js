@@ -405,6 +405,7 @@ export default class ARKitWrapper extends EventTarget {
 				// of there was an error ...
 				if (detail.error) {
 					reject(detail.error)
+					return;
 				}
 
 				var _anchor = this._anchors.get(detail.uuid);
@@ -499,7 +500,7 @@ export default class ARKitWrapper extends EventTarget {
 	 * Supply the image in an ArrayBuffer, typedArray or ImageData
 	 * width and height are in meters 
 	 */
-  createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+  _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
 		return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -518,13 +519,31 @@ export default class ARKitWrapper extends EventTarget {
             })
 		})
 	}
+  createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		return new Promise((resolve, reject) => {
+			this._createDetectionImage(uid, buffer, width, height, physicalWidthInMeters).then(detail => { 
+				if (detail.error) {
+					reject(detail.error)
+					return;
+				}
+				if (!detail.created) {
+					reject(null)
+					return;
+				}
+				resolve()
+			}).catch((...params) => {
+				console.error('could not activate image', ...params)
+				reject()
+			})
+		});
+	}
 
     /***
 	 * activateDetectionImage activates an image and waits for the detection
      * @param uid The UID of the image to activate, previously created via "createImageAnchor"
      * @returns {Promise<any>} a promise that will be resolved when ARKit detects the image, or an error otherwise
      */
-	activateDetectionImage(uid, trackable = false) {
+	_activateDetectionImage(uid, trackable = false) {
         return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -539,13 +558,33 @@ export default class ARKitWrapper extends EventTarget {
         })
 	}
 
+	activateDetectionImage(uid, trackable = false) {
+		return new Promise((resolve, reject) => {
+			this._activateDetectionImage(uid, trackable).then(detail => { 
+				if (detail.error) {
+					reject(detail.error)
+					reject;
+				}
+				if (!detail.activated) {
+					reject(null)
+					return;
+				}
+
+				this._createOrUpdateAnchorObject(detail.imageAnchor)
+				resolve(detail.imageAnchor.object)
+			}).catch((...params) => {
+				console.error('could not activate image', ...params)
+				reject()
+			})
+		});
+	}
 
 
 	/***********************************************
 	 * getWorldMap requests a worldmap from the platform
 	 * @returns {Promise<any>} a promise that will be resolved when the worldMap has been retrieved, or an error otherwise
 	 */
-	getWorldMap() {
+	_getWorldMap() {
 		return new Promise((resolve, reject) => {
 					if (!this._isInitialized){
 							reject(new Error('ARKit is not initialized'));
@@ -558,6 +597,25 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
+	getWorldMap() {
+		return new Promise((resolve, reject) => {
+			this._getWorldMap().then(ARKitWorldMap => {
+				if (ARKitWorldMap.saved === true) {
+						resolve(ARKitWorldMap.worldMap)
+				} else if (ARKitWorldMap.error !== null) {
+						reject(ARKitWorldMap.error)
+						return;
+				} else {
+						reject(null)
+						return;
+				}
+			}).catch((...params) => {
+				console.error('could not get world map', ...params)
+				reject()
+			})
+		})
+	}
+	
 	/***
 	* setWorldMap requests a worldmap for the platform be set
 	* @returns {Promise<any>} a promise that will be resolved when the worldMap has been set, or an error otherwise

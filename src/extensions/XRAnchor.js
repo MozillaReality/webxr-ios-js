@@ -43,7 +43,7 @@ export default class XRAnchor extends EventTarget {
 
 	notifyOfRemoval() {
 		try {
-			this.dispatchEvent( "removed", { source: this })
+			this.dispatchEvent( "remove", { source: this })
 		} catch(e) {
 			console.error('XRAnchor removed event error', e)
 		}
