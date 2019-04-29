@@ -106,7 +106,7 @@
 
                     meshMap.forEach(object => { 
                         if (!object.seen) {
-                            handleRemoveNode(object.worldMesh)
+                            handleRemoveNode(object)
                         } 
                     })
                 }
@@ -163,10 +163,10 @@
                 }
             }
 
-            function handleRemoveNode(worldMesh, object) {
+            function handleRemoveNode(object) {
                 object.threeMesh.geometry.dispose()
-                engine.removeAnchoredNode(worldMesh);
-                meshMap.delete(worldMesh.uid)
+                engine.removeAnchoredNode(object.node);
+                meshMap.delete(object.worldMesh.uid)
             }
 
             function handleNewNode(worldMesh) {
@@ -358,6 +358,8 @@
                             console.error('Session setup error', err)
                         })
                     document.getElementById('go-button').innerText = "End"
+                    //document.getElementById('go-button').style.display = 'none' 
+
                 } else {
                     session.end()
                     handleSessionEnded();
@@ -380,7 +382,8 @@
                         enabled : true
                     },
                     meshDetectionState : {
-                        enabled : true
+                        enabled : true,
+                        normals: true
                     }
                 })
 

@@ -52,9 +52,7 @@
             glasses: true
         };
 
-
         var gui = new dat.GUI({ autoPlace: false });
-        document.body.appendChild(gui.domElement);
 
         gui.add( params, 'face', { 'Occlusion Only': 'occlusion', 'Oclussion & Mesh': 'both', 'Transparent Mesh': 'transparent' } );
         gui.add( params, 'ducky' );
@@ -160,17 +158,17 @@
 
                 meshMap.forEach(object => { 
                     if (!object.seen) {
-                        handleRemoveNode(object.worldMesh, object)
+                        handleRemoveNode(object)
                     } 
                 })
         }
 
         }
 
-        function handleRemoveNode(worldMesh, object) {
+        function handleRemoveNode(object) {
             object.geometry.dispose()
-            engine.removeAnchoredNode(worldMesh);
-            meshMap.delete(worldMesh.uid)
+            engine.removeAnchoredNode(object.node);
+            meshMap.delete(object.worldMesh.uid)
         }
 
         function handleUpdateNode(worldMesh, object) {
@@ -321,11 +319,15 @@
                         console.error('Session setup error', err)
                     })
                 document.getElementById('go-button').innerText = "End"
+                //document.getElementById('go-button').style.display = 'none' 
+                document.body.appendChild(gui.domElement);
+
             } else {
                 session.end()
                 handleSessionEnded();
                 document.getElementById('description').style.display = 'block' 
                 document.getElementById('go-button').innerText = "Go"
+                document.body.appendChild(gui.domElement);
             }
         }
 
@@ -384,8 +386,8 @@
         ////////////////
         // render loop			
         function handleAnimationFrame(t, frame){
-            updateScene(frame)
             if(!session || session.ended) return
+            updateScene(frame)
             session.requestAnimationFrame(handleAnimationFrame)
 
             let pose = frame.getDevicePose(eyeLevelFrameOfReference)
