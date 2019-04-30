@@ -106,17 +106,18 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
 	}
 
-	requestAnimationFrame(callback){
-		return window.requestAnimationFrame((...params) => {
-			this._arKitWrapper.startingRender()
-			try {
-				callback(...params)
-			} catch(e) {
-				console.error('application callback error: ', e)
-			}	
-			this._arKitWrapper.finishedRender()
-		})
-	}
+	requestAnimationFrame(callback, ...params){
+//		return window.requestAnimationFrame((...params) => {
+		// 	this._arKitWrapper.startingRender()
+		// 	try {
+		// 		callback(...params)
+		// 	} catch(e) {
+		// 		console.error('application callback error: ', e)
+		// 	}	
+		// 	this._arKitWrapper.finishedRender()
+		// })
+	    this._arKitWrapper.requestAnimationFrame(callback, params)
+		}
 
 	cancelAnimationFrame(handle){
 		return window.cancelAnimationFrame(handle)
