@@ -205,7 +205,7 @@ function _setWorldMap(worldMap) {
 }
 
 function _getWorldMappingStatus() {
-	return arKitWrapper.worldMappingStatus;
+	return _arKitWrapper.worldMappingStatus;
 }
 
 // function _getAnchor(uid) {
