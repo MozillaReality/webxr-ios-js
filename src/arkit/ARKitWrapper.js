@@ -41,6 +41,9 @@ export default class ARKitWrapper extends EventTarget {
 		this._isInitialized = false
 		this._rawARData = null
 
+		this._rAF_callback = null
+		this._rAF_callbackParams = []
+
 		/**
 		 * session state, returned from session and updated when it changes.
 		 * 
@@ -579,6 +582,12 @@ export default class ARKitWrapper extends EventTarget {
 		});
 	}
 
+	setNumberOfTrackedImages(count) {
+		if (typeof(count) != "number") {
+			count = 0
+		}
+		window.webkit.messageHandlers.removeAnchors.postMessage({ numberOfTrackedImages: count })
+	}
 
 	/***********************************************
 	 * getWorldMap requests a worldmap from the platform
@@ -948,6 +957,33 @@ export default class ARKitWrapper extends EventTarget {
 		return null
 	}	
 
+	requestAnimationFrame(callback, ...params) {
+		this._rAF_callback = callback
+		this._rAF_callbackParams = params
+
+		// if there's data waiting, skip it because we're behind 
+	}
+
+	_do_rAF() {
+		if (this._rAF_callback) {
+			var _callback = this._rAF_callback
+			var _params = this._rAF_callbackParams
+
+			this._rAF_callback = null
+			this._rAF_callbackParams = []
+
+			return window.requestAnimationFrame((...params) => {
+				this.startingRender()
+				try {
+					_callback(..._params)
+				} catch(e) {
+					console.error('application callback error: ', e)
+				}	
+				this.finishedRender()
+			})
+		}
+	}
+
 	// this should be called after a frame has been processed.  Can't do it below because
 	// we don't know if we'll get data faster than we can render
 	finishedRender() { 
@@ -966,6 +1002,10 @@ export default class ARKitWrapper extends EventTarget {
 		this._rawARData = data
 		var plane, anchor
 
+		// if there's a rAF waiting, schedule it
+		if (this._rAF_callback) {
+			this._do_rAF()
+		}
 		this._dataBeforeNext++  
 		this._worldInformation = null
 

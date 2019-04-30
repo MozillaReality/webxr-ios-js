@@ -184,6 +184,10 @@ async function /*Promise<XRAnchor>*/ _removeAnchor(anchor) {
  * iOS specific things, not sure where to put these yet
 */
 
+function _setNumberOfTrackedImages (count) {
+	return _arKitWrapper.setNumberOfTrackedImages(count)
+}
+
 function _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
 	return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters)
 }
@@ -251,6 +255,7 @@ function _installExtensions(){
 		// use "nonStandard" to signify these are unlikely to be standardized 
 		XRSession.prototype.nonStandard_createDetectionImage = _createDetectionImage
 		XRSession.prototype.nonStandard_activateDetectionImage = _activateDetectionImage
+		XRSession.prototype.nonStandard_setNumberOfTrackedImages = _setNumberOfTrackedImages
 		XRSession.prototype.nonStandard_getWorldMap = _getWorldMap
 		XRSession.prototype.nonStandard_setWorldMap = _setWorldMap
 		XRSession.prototype.nonStandard_getWorldMappingStatus = _getWorldMappingStatus
