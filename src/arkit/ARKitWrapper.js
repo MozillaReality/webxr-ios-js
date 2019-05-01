@@ -586,7 +586,7 @@ export default class ARKitWrapper extends EventTarget {
 		if (typeof(count) != "number") {
 			count = 0
 		}
-		window.webkit.messageHandlers.removeAnchors.postMessage({ numberOfTrackedImages: count })
+		window.webkit.messageHandlers.setNumberOfTrackedImages.postMessage({ numberOfTrackedImages: count })
 	}
 
 	/***********************************************
