@@ -403,27 +403,24 @@ export default class ARKitWrapper extends EventTarget {
 		return new Promise((resolve, reject) => {
 			// create a placeholder anchor so we can use it's uid, and don't
 			// put it in the anchorlist yet, until the promise resolves
-			var anchor = new XRAnchor(anchorInWorldMatrix, this._timestamp)
-			this._addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
+			var tempAnchor = new XRAnchor(anchorInWorldMatrix, null, this._timestamp)
+			this._addAnchor(tempAnchor.uid, anchorInWorldMatrix).then(detail => { 
 				// of there was an error ...
 				if (detail.error) {
 					reject(detail.error)
 					return;
 				}
 
-				var _anchor = this._anchors.get(detail.uuid);
-				if(!_anchor){
+				var anchor = this._anchors.get(detail.uuid);
+				if(!anchor){
 					// need to get the data in eye-level reference frame
-					this._anchors.set(detail.uuid, {
-						id: detail.uuid,
-						object: anchor
-					});
+					this._anchors.set(detail.uuid, tempAnchor);
+					resolve(tempAnchor)
 				}else{
-					anchor = _anchor
 					anchor.updateModelMatrix(detail.transform, this._timestamp);
+					resolve(anchor)
 				}
 
-				resolve(anchor)
 			}).catch((...params) => {
 				console.error('could not create anchor', ...params)
 				reject()
@@ -446,7 +443,7 @@ export default class ARKitWrapper extends EventTarget {
 						anchor.placeholder = true;
 						this._anchors.set(hit.uuid, anchor)
 					}
-				}
+				} 
 
 				// const offsetPosition = [
 				// 	hit.world_transform[12] - hit.anchor_transform[12],
@@ -458,7 +455,7 @@ export default class ARKitWrapper extends EventTarget {
 				// const inverseAnchorRotation = quat.invert(q, quat.fromMat3(q, mat3.fromMat4(mat3.create(), hit.anchor_transform)))
 				// const offsetRotation = quat.multiply(q, worldRotation, inverseAnchorRotation)
 				// const offset = mat4.fromRotationTranslation(mat4.create(), offsetRotation, offsetPosition)
-				const wt = mat4.multiply(mat4.create(), hit.anchor_transform, hit.local_transform)
+				//const wt = mat4.multiply(mat4.create(), hit.anchor_transform, hit.local_transform)
 				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform)
 				resolve(anchorOffset)
 			} else {
@@ -586,7 +583,7 @@ export default class ARKitWrapper extends EventTarget {
 		if (typeof(count) != "number") {
 			count = 0
 		}
-		window.webkit.messageHandlers.removeAnchors.postMessage({ numberOfTrackedImages: count })
+		window.webkit.messageHandlers.setNumberOfTrackedImages.postMessage({ numberOfTrackedImages: count })
 	}
 
 	/***********************************************
@@ -816,14 +813,7 @@ export default class ARKitWrapper extends EventTarget {
 					this._anchors.delete(element.uuid)
 				} 
 
-				this._meshes.set(element.uuid, {
-					id: element.uuid,
-					// center: element.plane_center,
-					// extent: [element.plane_extent.x, element.plane_extent.z],
-					// modelMatrix: element.transform,
-					// alignment: element.plane_alignment,
-					object: planeObject
-				});
+				this._meshes.set(element.uuid, planeObject);
 				element.object = planeObject
 			} else {
 				// plane.center = element.plane_center
@@ -832,8 +822,8 @@ export default class ARKitWrapper extends EventTarget {
 				// plane.modelMatrix = element.transform
 				// plane.alignment = element.plane_alignment
 				// plane.geometry = element.geometry
-				plane.object.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp)
-				element.object = plane.object
+				plane.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp)
+				element.object = plane
 			}
 		}else{
 			var mesh = this._meshes.get(element.uuid);
@@ -869,31 +859,23 @@ export default class ARKitWrapper extends EventTarget {
 				}
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						this._meshes.set(element.uuid, {
-							id: element.uuid,
-							object: anchorObject
-							// modelMatrix: element.transform
-						});
+						this._meshes.set(element.uuid, anchorObject);
 						break;
 					default:
-						this._anchors.set(element.uuid, {
-							id: element.uuid,
-							object: anchorObject
-							// modelMatrix: element.transform
-						});
+						this._anchors.set(element.uuid, anchorObject);
 				}
 				element.object = anchorObject
 			} else {
 				anchor = anchor || mesh
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp)
+						anchor.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp)
 						break
 					default:
-						anchor.object.updateModelMatrix(element.transform, this._timestamp)
+						anchor.updateModelMatrix(element.transform, this._timestamp)
 						break;
 				}
-				element.object = anchor.object
+				element.object = anchor
 			}
 		}
 	}
@@ -932,8 +914,8 @@ export default class ARKitWrapper extends EventTarget {
 			this._meshes.forEach(mesh => { 
 				// there is a chance that mesh-related anchors will be created before they
 				// have any geometry.  Only return ones with meshes
-				if (mesh.object.vertexPositions.length > 0) { 
-					state.meshes.push(mesh.object) 
+				if (mesh.vertexPositions.length > 0) { 
+					state.meshes.push(mesh) 
 				}
 			})
 		}
@@ -988,8 +970,12 @@ export default class ARKitWrapper extends EventTarget {
 	// we don't know if we'll get data faster than we can render
 	finishedRender() { 
 		this._dataBeforeNext = 0
-		this._meshes.forEach(mesh => { mesh.object.clearChanged() })
-		this._anchors.forEach(anchor => { anchor.object.clearChanged() })
+		this._meshes.forEach(mesh => { 
+			mesh.clearChanged() 
+		})
+		this._anchors.forEach(anchor => { 
+			anchor.clearChanged() 
+		})
 	}
 
 	startingRender() {
@@ -1029,12 +1015,12 @@ export default class ARKitWrapper extends EventTarget {
 				const element = data.removedObjects[i];
 				const plane = this._meshes.get(element)
 				if(plane){
-					plane.object.notifyOfRemoval();
+					plane.notifyOfRemoval();
 					this._meshes.delete(element);
 				}else{
 					const anchor = this._anchors.get(element)
 					if (anchor) {
-						anchor.object.notifyOfRemoval();
+						anchor.notifyOfRemoval();
 						this._anchors.delete(element);
 					} else {
 						console.error("app signalled removal of non-existant anchor/plane")

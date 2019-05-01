@@ -6,7 +6,7 @@ XRAnchors provide per-frame coordinates which the system attempts to pin "in pla
 They may change pose on a per-frame bases as the system refines its map.
 */
 export default class XRAnchor extends EventTarget {
-	constructor(transform, geometry, uid=null, timestamp = 0){
+	constructor(transform, uid=null, timestamp = 0){
 		super();
 		this._uid = uid || XRAnchor._generateUID()
 		this._transform = mat4.clone(transform)

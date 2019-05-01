@@ -38,13 +38,13 @@
 			const identity = mat4.identity(mat4.create())
 
 			// for debugging, not for production use
-			let _mapMessageEl = document.createElement('div')
-			_mapMessageEl.style.position = 'absolute'
-			_mapMessageEl.style.bottom = '30px'
-			_mapMessageEl.style.left = '10px'
-			_mapMessageEl.style.color = 'grey'
-			_mapMessageEl.style['font-size'] = '16px'
-			document.body.appendChild(this._mapMessageEl)
+			let mapMessageEl = document.createElement('div')
+			mapMessageEl.style.position = 'absolute'
+			mapMessageEl.style.bottom = '30px'
+			mapMessageEl.style.left = '10px'
+			mapMessageEl.style.color = 'grey'
+			mapMessageEl.style['font-size'] = '16px'
+			document.body.appendChild(mapMessageEl)
 
 
 
@@ -61,15 +61,14 @@
 			function handleHitResults(hits) {
 				let size = 0.05;
 				let hit = hits[0]
-
-				session.addAnchor(hit, headFrameOfReference).then(anchor => {
-					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
-					mat4.multiply(workingMatrix, csTransform, hit.hitMatrix)
-
-					engine.addAnchored(workingMatrix, createSceneGraphNode())
-				}).catch(err => {
-					console.error('Error adding anchor', err)
-				})
+				if (hit) {
+					// use the hitMatrix so it creates an independent anchor
+					session.addAnchor(hit.hitMatrix, headFrameOfReference).then(anchor => {
+						engine.addAnchoredNode(anchor, createSceneGraphNode())
+					}).catch(err => {
+						console.error('Error adding anchor', err)
+					})
+				}
 			}
 
 			// Creates a box used to indicate the location of an anchor offset
@@ -94,12 +93,12 @@
 			}
 
 			// Called once per frame, before render, to give the app a chance to update this.scene
-			updateScene(frame){
-				_mapMessageEl.innerHTML = session.nonStandard_getWorldMappingStatus();
+			function updateScene(frame){
+				mapMessageEl.innerHTML = session.nonStandard_getWorldMappingStatus();
 			}
 
-			getMap() {
-				session.getWorldMap().then(map => {
+			function getMap() {
+				session.nonStandard_getWorldMap().then(map => {
 					worldMap = map;
 					console.log("got worldMap, size = ", worldMap.worldMap.length)
 				}).catch(err => {
@@ -111,9 +110,9 @@
 			// if you have a world map, you can use it with a similar command.  
 			// to see it in action, uncomment the following code:
 			//
-			setMap () {
+			function setMap () {
 				if (worldMap) {
-					session.setWorldMap(worldMap).then(val => {
+					session.nonStandard_setWorldMap(worldMap).then(val => {
 
 						// val returns a list of anchors, many of which are not yet valid
 						// we will set them to one thing now, and change it to something
@@ -131,7 +130,7 @@
 				}
 			}
 			
-			_handleNewWorldAnchor(event) {
+			function _handleNewWorldAnchor(event) {
 				let anchor = event.detail
 
 				if (anchor.uid.startsWith('anchor-')) {
@@ -221,8 +220,10 @@
 				}
 
 				if (!session) {
-					device.requestSession({ outputContext: xrContext })
-						.then(handleSessionStarted)
+					device.requestSession({ 
+                        outputContext: xrContext,
+                        worldSensing: true  
+                    }).then(handleSessionStarted)
 						.catch(err => {
 							console.error('Session setup error', err)
 						})

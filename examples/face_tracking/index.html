@@ -107,8 +107,8 @@
             let worldInfo = frame.worldInformation
             if(worldInfo.estimatedLight){
                 let ambientIntensity = worldInfo.estimatedLight.ambientIntensity
-                ambientLight.intensity = ambientIntensity;
-                directionalLight.intensity = ambientIntensity * 0.5;
+                ambientLight.intensity = ambientIntensity * 0.5;
+                directionalLight.intensity = ambientIntensity * 0.1;
             }
             if(worldInfo.meshes){
                 meshMap.forEach(object => { object.seen = false })
