@@ -102,8 +102,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 		layer.context.canvas.style.width = "100%";
 		layer.context.canvas.style.height = "100%";
-		layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
-		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
+		layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
 	requestAnimationFrame(callback, ...params){
