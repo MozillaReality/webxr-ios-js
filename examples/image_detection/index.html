@@ -4,11 +4,12 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<link rel="stylesheet" href="../common.css"/>
-	<script src="../libs/three.js"></script>
+	<script src="../libs/three/three.js"></script>
     <script src="../libs/dat.gui.min.js"></script>
 	<script src="../libs/three-gltf-loader.js"></script>
     <script module src="../../dist/webxr.js"></script>
     <script src="../libs/stats.js"></script>
+    <script src="../libs/three-web-layer.umd.js"></script>
 </head>
 <body>
 <div id="hubs" style="width: 100px; display: none">
@@ -27,7 +28,10 @@
         import * as mat4 from '../libs/gl-matrix/mat4.js'
         import * as vec3 from '../libs/gl-matrix/vec3.js'
 
+        // import * as THREE from '../libs/three.js'
         import XREngine from "../XREngine.js"
+
+        // import * as WebLayer3D from "../libs/three-web-layer.es5.js"
 
         let device = null
         let session = null
@@ -221,7 +225,7 @@
             })
             if(!glContext) throw new Error('Could not create a webgl context')
 
-            //session.nonStandard_setNumberOfTrackedImages(1)
+            session.nonStandard_setNumberOfTrackedImages(4)
 
             // Set up the base layer
             session.baseLayer = new XRWebGLLayer(session, glContext)

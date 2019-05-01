@@ -46,8 +46,9 @@
 			mapMessageEl.style['font-size'] = '16px'
 			document.body.appendChild(mapMessageEl)
 
-
-
+			// a saved map
+			var worldMap = null
+			
 			function initializeScene(){
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
@@ -94,7 +95,10 @@
 
 			// Called once per frame, before render, to give the app a chance to update this.scene
 			function updateScene(frame){
-				mapMessageEl.innerHTML = session.nonStandard_getWorldMappingStatus();
+				let msg = session.nonStandard_getWorldMappingStatus()
+				if (msg) {
+					mapMessageEl.innerHTML = msg
+				}
 			}
 
 			function getMap() {
