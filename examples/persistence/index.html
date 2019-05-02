@@ -48,7 +48,7 @@
 
 			// a saved map
 			var worldMap = null
-			
+
 			function initializeScene(){
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
@@ -101,6 +101,22 @@
 				}
 			}
 
+
+			/**
+			 * Basic flow needed:
+			 * - session.getMapForAnchor(anchor)
+			 *   returns a promise that resolves when finished.
+			 *   internally, we'll wait till the area is "mapped", then get the map and
+			 *   check if the anchor is in it.  Will only return the map without details
+			 *   has methods to cancel trying, and check status
+			 * - session.getAnchorFromMap(map)
+			 *   returns a promise that resolves when the map has loaded and the 
+			 *   anchor associated with the map is alive.  
+			 *      or returns a new kind of XRAnchor, XRMappedAnchor, that can be
+			 *      tested as to when it is resolved and thus valid, and also has
+			 *      methods to cancel the resolving process and get status
+			 *   need to be careful to not pass other anchors up to the app
+			*/
 			function getMap() {
 				session.nonStandard_getWorldMap().then(map => {
 					worldMap = map;
