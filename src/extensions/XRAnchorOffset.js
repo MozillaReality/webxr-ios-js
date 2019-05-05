@@ -6,9 +6,10 @@ import XRAnchor from './XRAnchor.js'
 XRAnchorOffset represents a pose in relation to an XRAnchor
 */
 export default class XRAnchorOffset extends XRAnchor {
-	constructor(anchor, offset=null, timestamp){
-		super(offset, null, timestamp)
+	constructor(anchor, offset=null){
+		super(offset, null)
 		this._anchor = anchor
+		this._timestamp = anchor.timeStamp
 		this._tempArray = new Float32Array(16)
 		this._offsetMatrix = mat4.create()
 		if (offset) {
@@ -33,11 +34,11 @@ export default class XRAnchorOffset extends XRAnchor {
 	// so a dummy anchor will be created, and if/when a real one shows up with the same UID
 	// we'll update this node
 	_handleReplaceAnchor(detail) {
-		this._anchor = detail
+		this._anchor.removeEventListener("update", this._handleAnchorUpdateListener)
+		this._anchor.removeEventListener("removal", this._notifyOfRemovalListener)
+		this._anchor.removeEventListener("replaceAnchor", this._handleReplaceAnchorListener)
 
-		this._anchor.deleteEv("update", this._handleAnchorUpdateListener)
-		this._anchor.addEventListener("removal", this._notifyOfRemovalListener)
-		this._anchor.addEventListener("replaceAnchor", this._handleReplaceAnchorListener)
+		this._anchor = detail
 
 		this._anchor.addEventListener("update", this._handleAnchorUpdateListener)
 		this._anchor.addEventListener("removal", this._notifyOfRemovalListener)
@@ -45,11 +46,15 @@ export default class XRAnchorOffset extends XRAnchor {
 	}
 
 	_handleAnchorUpdate() {
-		mat4.multiply(this._tempArray, anchor.modelMatrix, this._offsetMatrix)
-		this.updateModelMatrix(this._tempArray, this._timestamp)
+		mat4.multiply(this._tempArray, this._anchor.modelMatrix, this._offsetMatrix)
+		this.updateModelMatrix(this._tempArray, Math.max(this._anchor.timeStamp, this._timestamp))
 	}
 
 	get modelMatrix () { return this._transform }
+
+	clearChanged() {
+		super.clearChanged();
+	}
 
 	get anchor(){ return this._anchor }
 

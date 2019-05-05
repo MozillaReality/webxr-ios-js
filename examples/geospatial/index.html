@@ -1,0 +1,298 @@
+<html>
+	<head>
+		<title>Geospatial AR example</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<script src="../libs/three.min.js"></script>
+		<script src="../libs/Cesium.js"></script>
+ 		<script module src="../../dist/webxr.js"></script>
+		<link rel="stylesheet" href="../common.css"/>
+		<script src="../models/TeapotBufferGeometry.js"></script>
+	</head>
+	<body>
+		<div id="description">
+			<h2>Geospatial AR Example</h2>
+			<h5>(click to dismiss)</h5>
+			<p>This example displays the Utah Teapot positioned a short distance from the user's geospatial location.</p>
+		</div>
+		<button type=button id=go-button>Go</button>
+		<script type=module>
+			function hideMe(event) { 
+				event.target.style.display = 'none' 
+				event.stopPropagation()
+			}
+			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
+
+			/// me    33.785507, -84.348274    lat lon
+			/// near  33.785398, -84.347829
+			// dif:  0.0001   0.0005
+
+			// some dependencies and utilities
+			import * as mat4 from '../libs/gl-matrix/mat4.js'
+			import * as vec3 from '../libs/gl-matrix/vec3.js'
+
+			import XREngine from "../XREngine.js"
+
+			let device = null
+			let session = null
+			let headFrameOfReference = null
+			let eyeLevelFrameOfReference = null
+			let layer = null
+			let frameOfReference = null
+			let engine = null
+			
+			// temporary working variables
+			const workingMatrix1 = mat4.create()
+			const identity = mat4.identity(mat4.create())
+
+			let textBox = document.createElement('span')
+			textBox.setAttribute('id', 'text-box')
+			textBox.innerText = '0.0'
+			document.body.appendChild(textBox)
+
+
+			function getGeolocation() {
+				return new Promise((resolve, reject)=>{
+
+					if (!("geolocation" in navigator)) {
+						// fake it for now
+						reject("no geolocation API")
+					}
+
+					function success(pos) {
+						resolve(pos.coords)
+					}
+
+					function error(err) {
+						reject(err)
+					}
+
+					try {
+						let options = {
+							enableHighAccuracy: true
+						};
+						navigator.geolocation.getCurrentPosition(success, error, options);
+					} catch(err) {
+						// unusual error - just return it
+						reject(err)
+					}
+				})
+			}
+
+			////////////
+			var myGeoAnchor = null
+			var myGeoLoc = null
+			var myCartographic = null
+
+			getGeolocation().then(geo => {
+				myGeoLoc = {
+					latitude: geo.latitude,
+					longitude: geo.longitude,
+					altitude: geo.altitude,
+					accuracy: geo.accuracy,
+					altitudeAccuracy: geo.altitudeAccuracy
+				}
+
+				console.log(geo)
+			})
+
+			const DIST = 0.001
+			function updateScene() {
+				if (myGeoLoc) {
+					let north = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude, myGeoLoc.latitude+DIST, myGeoLoc.altitude)
+					XRGeospatialAnchor.createGeoAnchor(north).then(anchor => {
+						myGeoAnchor = anchor
+						engine.addAnchoredNode(anchor, createSceneGraphNode("north"))					
+					})
+					let south = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude, myGeoLoc.latitude-DIST, myGeoLoc.altitude)
+					XRGeospatialAnchor.createGeoAnchor(south).then(anchor => {
+						myGeoAnchor = anchor
+						engine.addAnchoredNode(anchor, createSceneGraphNode("south"))					
+					})
+					let east = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude+DIST, myGeoLoc.latitude, myGeoLoc.altitude)
+					XRGeospatialAnchor.createGeoAnchor(east).then(anchor => {
+						myGeoAnchor = anchor
+						engine.addAnchoredNode(anchor, createSceneGraphNode("east"))					
+					})
+					let west = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude-DIST, myGeoLoc.latitude, myGeoLoc.altitude)
+					XRGeospatialAnchor.createGeoAnchor(west).then(anchor => {
+						myGeoAnchor = anchor
+						engine.addAnchoredNode(anchor, createSceneGraphNode("west"))					
+					})
+					myGeoLoc = null    // don't want to keep asking
+				}
+				if (myGeoAnchor) {
+
+				}
+			}
+
+			let testCartographic = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 275.12518310546875)
+			let testAltitude = 275.12518310546875
+
+			function initializeScene() {
+				engine.addAmbientLight(0xffffff, 0.8)
+
+				// Add a box and sphere at the origin of the eye-level coordinate system
+				engine.addBox([0, -0.25, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				engine.addSphere([0, -0.25, -0.2], [0.025, 0.025, 0.025], 0xff4444)
+				engine.addAxesHelper([0,-0.25,0], [0.2,0.2,0.2])		
+				
+				// some tests
+				XRGeospatialAnchor.getDeviceCartographic().then(cartographic => {
+					console.log("device cartographic: ", cartographic)
+				})
+
+				XRGeospatialAnchor.getDeviceElevation().then(altitude => {
+					console.log("device elevation: ", altitude)
+				})
+
+				XRGeospatialAnchor.getDefaultElevation(testCartographic).then(altitude => {
+					console.log("estimated world elevation: ", altitude)
+				})
+			}
+
+			// Creates a box used to indicate the location of an anchor offset
+			function createSceneGraphNode(direction){
+				let group = new THREE.Group()
+	
+				let texture = new THREE.TextureLoader().load( '../textures/crate-' + direction + '.gif' );
+				texture.mapping = THREE.UVMapping;
+				texture.anisotropy = engine.renderer.capabilities.getMaxAnisotropy();
+				let material = new THREE.MeshLambertMaterial( { map: texture } );
+
+				let geometry = new THREE.BoxBufferGeometry(10, 10, 10)
+				let mesh = new THREE.Mesh(geometry, material)
+	
+				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
+
+				mesh.position.set(0, 0.05, 0)
+				outlineMesh.position.set(0, 0.05, 0);
+				outlineMesh.scale.multiplyScalar(1.05);
+
+				group.add(mesh)
+				group.add(outlineMesh)
+				return group
+			}
+
+			////////////////////////////////////////////////////
+			////////////////////////////////////////////////////
+			// BOILER PLATE.  Can you feel the plates boiling?
+			//
+			// Create the output context where the XRSession will place composited renders
+			const xrCanvas = document.createElement('canvas')
+			xrCanvas.setAttribute('class', 'xr-canvas')
+			const xrContext = xrCanvas.getContext('xrpresent')
+			if(!xrContext){
+				console.error('No XR context', xrCanvas)
+			}
+
+			// get the XR Device
+			navigator.xr.requestDevice().then(xrDevice => {
+				device = xrDevice
+			}).catch(err => {
+				console.error('Error', err)
+			})
+
+			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
+			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
+			function handleGoButtonTouch(event) { 
+				event.stopPropagation()
+			}
+
+			function handleStartSessionRequest(ev){
+				if(device === null){
+					console.error('No xr device')
+					return
+				}
+
+				if (!session) {
+					device.requestSession({ 
+						outputContext: xrContext,
+						alignEUS: true,
+						geolocation: true
+					 })
+						.then(handleSessionStarted)
+						.catch(err => {
+							console.error('Session setup error', err)
+						})
+					document.getElementById('go-button').innerText = "End"
+				} else {
+					session.end()
+					handleSessionEnded();
+					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').innerText = "Go"
+				}
+			}
+
+			function handleSessionEnded() {	
+				session = null
+			}
+
+			function handleSessionStarted(xrSession){
+				session = xrSession
+				document.body.insertBefore(xrCanvas, document.body.firstChild)
+
+				// Create the context where we will render our 3D scene
+				const canvas = document.createElement('canvas')
+				var glContext = canvas.getContext('webgl', {
+					compatibleXRDevice: device
+				})
+				if(!glContext) throw new Error('Could not create a webgl context')
+
+				// Set up the base layer
+				session.baseLayer = new XRWebGLLayer(session, glContext)
+
+				// Create a simple test scene and renderer
+				// The engine's scene is in the eye-level coordinate system 
+
+				// use a logarithmic camera
+				engine = new XREngine(canvas, glContext, true)
+
+				// head-model is the coordinate system that tracks the position of the display
+				session.requestFrameOfReference('head-model').then(frameOfReference =>{
+					headFrameOfReference = frameOfReference
+				})
+				.catch(err => {
+					console.error('Error finding head frame of reference', err)
+				})
+				// eye-level is the coordinate system of the ARKit tracking system 
+				session.requestFrameOfReference('eye-level').then(frameOfReference => {
+					eyeLevelFrameOfReference = frameOfReference
+					// Kick off rendering
+					session.requestAnimationFrame(handleAnimationFrame)
+				})
+				.catch(err => {
+					console.error('Error finding eye frame of reference', err)
+				})
+
+				initializeScene()
+			}
+
+			// render loop			
+			function handleAnimationFrame(t, frame){
+				if(!session || session.ended) return
+				updateScene()
+				session.requestAnimationFrame(handleAnimationFrame)
+
+				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
+				if(!pose){
+					console.log('No pose')
+					return
+				}
+
+				engine.startFrame()
+				for (let view of frame.views) {
+					engine.render(
+						session.baseLayer.getViewport(view),
+						view.projectionMatrix,
+						pose.getViewMatrix(view)
+					)
+					break
+				}
+				engine.endFrame()
+			}
+
+		</script>
+	</body>
+</html>

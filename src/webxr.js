@@ -19,7 +19,8 @@ const PI_OVER_180 = Math.PI / 180
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
 	  var _arKitDevice = new ARKitDevice(this.global)
-    this.xr = new XR(new XRDevice(_arKitDevice))
+		this.xr = new XR(new XRDevice(_arKitDevice))
+		this.xr._mozillaXRViewer = true
     Object.defineProperty(this.global.navigator, 'xr', {
       value: this.xr,
       configurable: true,
@@ -92,7 +93,7 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 					const hitInHeadMatrix = mat4.multiply(mat4.create(), csTransform, hit.world_transform)
 					//console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
 					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
-					return new XRHitResult(hitInHeadMatrix, hit)
+					return new XRHitResult(hitInHeadMatrix, hit, _arKitWrapper._timestamp)
 				}))
 			}).catch((...params) => {
 				console.error('Error testing for hits', ...params)
@@ -167,8 +168,7 @@ async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
 				})
 			});
 		}	else {
-			console.error('invalid value passed to addAnchor', value)
-			reject()
+			return Promise.reject('invalid value passed to addAnchor', value)	
 		}
 }
 
@@ -205,7 +205,7 @@ function _setWorldMap(worldMap) {
 }
 
 function _getWorldMappingStatus() {
-	return arKitWrapper.worldMappingStatus;
+	return _arKitWrapper._worldMappingStatus;
 }
 
 // function _getAnchor(uid) {

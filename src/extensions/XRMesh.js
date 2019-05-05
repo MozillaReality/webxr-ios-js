@@ -13,14 +13,11 @@ export default class XRMesh extends XRAnchor {
     static setUseGeomArrays() { _useGeomArrays = true }
 
 
-	constructor(transform, geometry, uid=null, timeStamp=0) {
-        super(transform, uid)
+	constructor(transform, geometry, uid=null, timestamp=0) {
+        super(transform, uid, timestamp)
         
         // copy the array value into the object
         this._useGeomArrays = _useGeomArrays
-
-        // time the mesh was last updated
-        this._updateTime = timeStamp
 
         /* General mesh geometry comes in with:
 
@@ -73,8 +70,6 @@ export default class XRMesh extends XRAnchor {
     get triangleIndicesChanged () { this._triangleIndicesChanged }
     get textureCoordinatesChanged () { this._textureCoordinatesChanged }
     get vertexNormalsChanged () { this._vertexNormalsChanged }
-
-    get updateTime () { return this._updateTime }
 
     get vertexPositions () { return this._vertexPositions }
     get vertexNormals () { return this._vertexNormals }
