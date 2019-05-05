@@ -34,11 +34,11 @@ export default class XRAnchorOffset extends XRAnchor {
 	// so a dummy anchor will be created, and if/when a real one shows up with the same UID
 	// we'll update this node
 	_handleReplaceAnchor(detail) {
-		this._anchor = detail
+		this._anchor.removeEventListener("update", this._handleAnchorUpdateListener)
+		this._anchor.removeEventListener("removal", this._notifyOfRemovalListener)
+		this._anchor.removeEventListener("replaceAnchor", this._handleReplaceAnchorListener)
 
-		this._anchor.deleteEv("update", this._handleAnchorUpdateListener)
-		this._anchor.addEventListener("removal", this._notifyOfRemovalListener)
-		this._anchor.addEventListener("replaceAnchor", this._handleReplaceAnchorListener)
+		this._anchor = detail
 
 		this._anchor.addEventListener("update", this._handleAnchorUpdateListener)
 		this._anchor.addEventListener("removal", this._notifyOfRemovalListener)

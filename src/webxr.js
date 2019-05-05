@@ -19,7 +19,8 @@ const PI_OVER_180 = Math.PI / 180
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
 	  var _arKitDevice = new ARKitDevice(this.global)
-    this.xr = new XR(new XRDevice(_arKitDevice))
+		this.xr = new XR(new XRDevice(_arKitDevice))
+		this.xr._mozillaXRViewer = true
     Object.defineProperty(this.global.navigator, 'xr', {
       value: this.xr,
       configurable: true,

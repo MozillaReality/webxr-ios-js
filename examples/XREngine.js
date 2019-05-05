@@ -1,18 +1,32 @@
 
 const PI_OVER_180 = Math.PI / 180
 
+// the furthese pluto gets from the sun is 7,375,930,000, so let's double that as our "very far value"
+const FAR = 15000000000000
+// really can't imagine needing to be closer than 1mm
+var NEAR = 0.001
+
+// values for the perspective matrix
+var PERPS_10 = - ( FAR + NEAR ) / ( FAR - NEAR );
+var PERSP_14 = - 2 * FAR * NEAR / ( FAR - NEAR );
+
 /*
 A wrapper around the Three renderer and related classes, useful for quick testing.
 */
 export default class XREngine {
-	constructor(glCanvas, glContext){
+	constructor(glCanvas, glContext, logarithmicDepth = false){
 		this._glCanvas = glCanvas
 		this._glContext = glContext
-
+		this._logarithmicDepth = logarithmicDepth
+		
 		const aspectRatio = document.documentElement.offsetWidth / document.documentElement.offsetHeight
 
 		// Dynamically calculate the FOV
-		this._camera = new THREE.PerspectiveCamera(70, aspectRatio, 0.1, 1000)
+		this._camera = new THREE.PerspectiveCamera(70, aspectRatio, 
+			// setting these doesn't really matter, since the perspective matrix gets overritten in
+			// the render loop
+			logarithmicDepth? NEAR : 0.05, 
+			logarithmicDepth? FAR : 1000)
 		this._camera.matrixAutoUpdate = false
 		this._scene = new THREE.Scene()
 		this._scene.add(this._camera)
@@ -20,9 +34,15 @@ export default class XREngine {
 			canvas: this._glCanvas,
 			context: this._glContext,
 			antialias: false,
+			logarithmicDepthBuffer: logarithmicDepth,
 			alpha: false
 		})
 
+		if (logarithmicDepth && !this._renderer.capabilities.logarithmicDepthBuffer) {
+			this._logarithmicDepth = false
+
+			console.warn("couldn't create a logarithmic depth buffer in the XREngine: not supported by the renderer")
+		}
 		// an array of info that we'll use in _handleFrame to update the nodes using anchors
 		this._anchoredNodes = new Map() // { XRAnchorOffset, Three.js Object3D }
 
@@ -36,8 +56,13 @@ export default class XREngine {
 
 	render(viewport, projectionMatrix, viewMatrix){
 		this._camera.matrix.fromArray(viewMatrix)
+		this._camera.matrixWorldNeedsUpdate = true
 		this._camera.updateMatrixWorld()
 		this._camera.projectionMatrix.fromArray(projectionMatrix)
+		if (this._logarithmicDepth) {
+			this._camera.projectionMatrix.elements[10] = PERPS_10
+			this._camera.projectionMatrix.elements[14] = PERSP_14
+		}
 
 		this._renderer.setSize(this._glCanvas.width, this._glCanvas.height, false)
 		this._renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)

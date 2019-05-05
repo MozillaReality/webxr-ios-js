@@ -6,6 +6,16 @@ import {throttle, throttledConsoleLog} from '../lib/throttle.js'
 
 import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
+import XRGeospatialAnchor from '../extensions/XRGeospatialAnchor.js';
+
+var styleEl = document.createElement('style');
+// Append <style> element to <head>
+document.head.appendChild(styleEl);
+// Grab style element's sheet
+var styleSheet = styleEl.sheet;
+styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
+styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
 
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
@@ -48,7 +58,10 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	set depthFar(val){ this._depthFar = val }
 
 	supportsSession(options={}){
-		return options.immersive === false
+		// true if:
+		//  not (geolocation and not alignEUS)  ==>  can only use geolocation if aligneus is true
+		//  not immersive
+		return  !(!options.alignEUS && options.geolocation) && !options.immersive
 	}
 
 	async requestSession(options={}){
@@ -69,13 +82,16 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		if (options.worldSensing) {
 			ARKitOptions.worldSensing = options.worldSensing
 		}
-		if (options.useComputerVision) {
+		if (options.computerVision) {
 			ARKitOptions.videoFrames = options.useComputerVision
 		}
 		if (options.alignEUS) {
 			ARKitOptions.alignEUS = options.alignEUS
 		}
-
+		var geolocation = false
+		if (options.geolocation && options.alignEUS) {
+			geolocation = true
+		}
 		let initResult = await this._arKitWrapper.waitForInit().then(() => {
 		}).catch((...params) => {
 			console.error("app failed to initialize: ", ...params)
@@ -86,6 +102,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			const session = new Session(options.outputContext || null)
 			this._sessions.set(session.id, session)
 			this._activeSession = session
+
+			session._useGeolocation = geolocation
+			if (geolocation) {
+//				XRGeospatialAnchor.useSession(session)
+			}
 
 			return Promise.resolve(session.id)
 		}).catch((...params) => {
@@ -163,6 +184,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 		if(session.baseLayer !== null){
 			this._wrapperDiv.removeChild(session.baseLayer.context.canvas)
+		}
+		if (session._useGeolocation) {
+			XRGeospatialAnchor.closeSession()
 		}
 	}
 
