@@ -4,9 +4,9 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<link rel="stylesheet" href="../common.css"/>
-	<script src="../libs/three.js"></script>
+	<script src="../libs/three/three.js"></script>
+	<script src="../libs/three/loaders/GLTFLoader.js"></script>
     <script src="../libs/dat.gui.min.js"></script>
-	<script src="../libs/three-gltf-loader.js"></script>
     <script module src="../../dist/webxr.js"></script>
 </head>
 <body>
@@ -26,17 +26,15 @@
 
         let device = null
         let session = null
-        let headFrameOfReference = null
         let eyeLevelFrameOfReference = null
-        let layer = null
-        let frameOfReference = null
         let engine = null
         
         var meshMap = new Map()
         
         // temporary working variables
         const workingMatrix = mat4.create()
-        const identity = mat4.identity(mat4.create())
+        const workingVec3 = vec3.create()
+
         var savedOrigin = [0,0,0]
         var savedDirection = [0,0,-1]
         
@@ -66,29 +64,38 @@
         var material = null
         var wireMaterial = null
 
+
         var ducky = new THREE.Group()
         ducky.name = "Duck group"
-        loadGLTF('./DuckyMesh.glb').then(gltf => {
-            let duckyNode = gltf.scene
-            duckyNode.position.set(0, -0.25, -0.2)
-            duckyNode.scale.set(3,3,3)
-            ducky.add(duckyNode)
-            duckyCreated = true
-        }).catch((...params) =>{
-            console.error('could not load gltf', ...params)
-        })
+        var loader = new THREE.GLTFLoader().setPath( './' );
+        loader.load( 'DuckyMesh.glb',
+            function (gltf) {
+                let duckyNode = gltf.scene
+                duckyNode.position.set(0, -0.25, -0.2)
+                duckyNode.scale.set(3,3,3)
+                ducky.add(duckyNode)
+                duckyCreated = true
+            }, 
+            null,  // progress callback
+            function(e) {
+                console.error('could not load gltf', ...params)
+            })
 
+        loader.setPath('./glasses/')
         var glasses = new THREE.Group()
         glasses.name = "Glasses group"
-        loadGLTF('./glasses/glasses.gltf').then(gltf => {
-            let glassesNode = gltf.scene
-            glassesNode.position.set(0, 0.01, 0.06)
-            glassesNode.scale.set(0.0005,0.0005,0.0005)
-            glasses.add(glassesNode)
-            glassesCreated = true
-        }).catch((...params) =>{
-            console.error('could not load gltf', ...params)
-        })
+        loader.load( 'glasses.gltf',
+            function (gltf) {
+                let glassesNode = gltf.scene
+                glassesNode.position.set(0, 0.01, 0.06)
+                glassesNode.scale.set(0.0005,0.0005,0.0005)
+                glasses.add(glassesNode)
+                glassesCreated = true
+            }, 
+            null,  // progress callback
+            function(e) {
+                console.error('could not load gltf', ...params)
+            })
 
         function initializeScene() {
             ambientLight = engine.addAmbientLight()
@@ -363,25 +370,30 @@
             // Our custom engine class does hit testing at the end of each rAF 
             engine = new XREngine(canvas, glContext)
 
-            // head-model is the coordinate system that tracks the position of the display
-            session.requestFrameOfReference('head-model').then(frameOfReference =>{
-                headFrameOfReference = frameOfReference
-            })
-            .catch(err => {
-                console.error('Error finding head frame of reference', err)
-            })
-            // eye-level is the coordinate system of the ARKit tracking system 
-            session.requestFrameOfReference('eye-level').then(frameOfReference => {
-                eyeLevelFrameOfReference = frameOfReference
+            createRootNode().then(() => {
                 // Kick off rendering
                 session.requestAnimationFrame(handleAnimationFrame)
-            })
-            .catch(err => {
-                console.error('Error finding eye frame of reference', err)
             })
 
             initializeScene()
         }
+
+        async function createRootNode() {
+            let headFrameOfReference = await session.requestFrameOfReference('head-model')
+            eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+            // get the location of the device, and use it to create an 
+            // anchor with the identity orientation
+            headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+            mat4.getTranslation(workingVec3, workingMatrix)
+            mat4.fromTranslation(workingMatrix, workingVec3)
+
+            let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+            engine.addAnchoredNode(anchor, engine.root)
+            
+            return true
+        }
+
 
         ////////////////
         // render loop			

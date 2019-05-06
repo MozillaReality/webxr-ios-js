@@ -3,17 +3,16 @@
 		<title>Geospatial AR example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<script src="../libs/three.min.js"></script>
+		<script src="../libs/three/three.min.js"></script>
 		<script src="../libs/Cesium.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
-		<script src="../models/TeapotBufferGeometry.js"></script>
 	</head>
 	<body>
 		<div id="description">
 			<h2>Geospatial AR Example</h2>
 			<h5>(click to dismiss)</h5>
-			<p>This example displays the Utah Teapot positioned a short distance from the user's geospatial location.</p>
+			<p>This example displays some cubes to the North, South, East and West from the user's geospatial location.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
@@ -35,15 +34,12 @@
 
 			let device = null
 			let session = null
-			let headFrameOfReference = null
 			let eyeLevelFrameOfReference = null
-			let layer = null
-			let frameOfReference = null
 			let engine = null
 			
 			// temporary working variables
-			const workingMatrix1 = mat4.create()
-			const identity = mat4.identity(mat4.create())
+			const workingMatrix = mat4.create()
+			const workingVec3 = vec3.create()
 
 			let textBox = document.createElement('span')
 			textBox.setAttribute('id', 'text-box')
@@ -51,95 +47,96 @@
 			document.body.appendChild(textBox)
 
 
-			function getGeolocation() {
-				return new Promise((resolve, reject)=>{
-
-					if (!("geolocation" in navigator)) {
-						// fake it for now
-						reject("no geolocation API")
-					}
-
-					function success(pos) {
-						resolve(pos.coords)
-					}
-
-					function error(err) {
-						reject(err)
-					}
-
-					try {
-						let options = {
-							enableHighAccuracy: true
-						};
-						navigator.geolocation.getCurrentPosition(success, error, options);
-					} catch(err) {
-						// unusual error - just return it
-						reject(err)
-					}
-				})
-			}
-
 			////////////
 			var myGeoAnchor = null
 			var myGeoLoc = null
 			var myCartographic = null
 
-			getGeolocation().then(geo => {
-				myGeoLoc = {
-					latitude: geo.latitude,
-					longitude: geo.longitude,
-					altitude: geo.altitude,
-					accuracy: geo.accuracy,
-					altitudeAccuracy: geo.altitudeAccuracy
-				}
 
-				console.log(geo)
-			})
+			// function getGeolocation() {
+			// 	return new Promise((resolve, reject)=>{
 
-			const DIST = 0.001
+			// 		if (!("geolocation" in navigator)) {
+			// 			// fake it for now
+			// 			reject("no geolocation API")
+			// 		}
+
+			// 		function success(pos) {
+			// 			resolve(pos.coords)
+			// 		}
+
+			// 		function error(err) {
+			// 			reject(err)
+			// 		}
+
+			// 		try {
+			// 			let options = {
+			// 				enableHighAccuracy: true
+			// 			};
+			// 			navigator.geolocation.getCurrentPosition(success, error, options);
+			// 		} catch(err) {
+			// 			// unusual error - just return it
+			// 			reject(err)
+			// 		}
+			// 	})
+			// }
+			// 
+			// getGeolocation().then(geo => {
+			// 	myGeoLoc = {
+			// 		latitude: geo.latitude,
+			// 		longitude: geo.longitude,
+			// 		altitude: geo.altitude,
+			// 		accuracy: geo.accuracy,
+			// 		altitudeAccuracy: geo.altitudeAccuracy
+			// 	}
+
+			// 	console.log(geo)
+			// })
+
 			function updateScene() {
-				if (myGeoLoc) {
-					let north = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude, myGeoLoc.latitude+DIST, myGeoLoc.altitude)
+			}
+
+			// samples received from the location API at this location, at one point
+			let testCartographic = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 275.12518310546875)
+			let testAltitude = 275.12518310546875
+
+			const DIST = 0.001 * THREE.Math.DEG2RAD
+			function initializeScene() {
+				engine.addAmbientLight(0xffffff, 0.8)
+
+				// Add a box at the origin of our starting coordinate system
+				// engine.addBox([0, -0.25, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				// engine.addAxesHelper([0,-0.25,0], [0.2,0.2,0.2])		
+				
+				// some tests
+				XRGeospatialAnchor.getDeviceCartographic().then(cartographic => {
+					myGeoLoc = cartographic
+					console.log("device cartographic: ", myGeoLoc)
+
+					let north = Cesium.Cartographic.clone(cartographic)
+					north.latitude += DIST
 					XRGeospatialAnchor.createGeoAnchor(north).then(anchor => {
 						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("north"))					
 					})
-					let south = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude, myGeoLoc.latitude-DIST, myGeoLoc.altitude)
+					let south = Cesium.Cartographic.clone(cartographic)
+					south.latitude -= DIST
 					XRGeospatialAnchor.createGeoAnchor(south).then(anchor => {
 						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("south"))					
 					})
-					let east = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude+DIST, myGeoLoc.latitude, myGeoLoc.altitude)
+					let east = Cesium.Cartographic.clone(cartographic)
+					east.longitude += DIST
 					XRGeospatialAnchor.createGeoAnchor(east).then(anchor => {
 						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("east"))					
 					})
-					let west = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude-DIST, myGeoLoc.latitude, myGeoLoc.altitude)
+					let west = Cesium.Cartographic.clone(cartographic)
+					west.longitude -= DIST
 					XRGeospatialAnchor.createGeoAnchor(west).then(anchor => {
 						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("west"))					
 					})
-					myGeoLoc = null    // don't want to keep asking
-				}
-				if (myGeoAnchor) {
-
-				}
-			}
-
-			let testCartographic = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 275.12518310546875)
-			let testAltitude = 275.12518310546875
-
-			function initializeScene() {
-				engine.addAmbientLight(0xffffff, 0.8)
-
-				// Add a box and sphere at the origin of the eye-level coordinate system
-				engine.addBox([0, -0.25, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				engine.addSphere([0, -0.25, -0.2], [0.025, 0.025, 0.025], 0xff4444)
-				engine.addAxesHelper([0,-0.25,0], [0.2,0.2,0.2])		
-				
-				// some tests
-				XRGeospatialAnchor.getDeviceCartographic().then(cartographic => {
-					console.log("device cartographic: ", cartographic)
 				})
 
 				XRGeospatialAnchor.getDeviceElevation().then(altitude => {
@@ -147,6 +144,7 @@
 				})
 
 				XRGeospatialAnchor.getDefaultElevation(testCartographic).then(altitude => {
+					console.log("recorded work elevation in past: ", testAltitude)
 					console.log("estimated world elevation: ", altitude)
 				})
 			}
@@ -249,24 +247,28 @@
 				// use a logarithmic camera
 				engine = new XREngine(canvas, glContext, true)
 
-				// head-model is the coordinate system that tracks the position of the display
-				session.requestFrameOfReference('head-model').then(frameOfReference =>{
-					headFrameOfReference = frameOfReference
-				})
-				.catch(err => {
-					console.error('Error finding head frame of reference', err)
-				})
-				// eye-level is the coordinate system of the ARKit tracking system 
-				session.requestFrameOfReference('eye-level').then(frameOfReference => {
-					eyeLevelFrameOfReference = frameOfReference
+				createRootNode().then(() => {
 					// Kick off rendering
 					session.requestAnimationFrame(handleAnimationFrame)
 				})
-				.catch(err => {
-					console.error('Error finding eye frame of reference', err)
-				})
 
 				initializeScene()
+			}
+
+			async function createRootNode() {
+				let headFrameOfReference = await session.requestFrameOfReference('head-model')
+				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+				// get the location of the device, and use it to create an 
+				// anchor with the identity orientation
+				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+				mat4.getTranslation(workingVec3, workingMatrix)
+				mat4.fromTranslation(workingMatrix, workingVec3)
+
+				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+				engine.addAnchoredNode(anchor, engine.root)
+				
+				return true
 			}
 
 			// render loop			

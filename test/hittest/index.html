@@ -1,7 +1,7 @@
 <html>
 	<head>
 		<meta charset="utf-8">
-		<script src="../libs/three/three.min.js"></script>
+		<script src="../libs/three.min.js"></script>
 <!-- 		<script module src="../../dist/webxr.js"></script>
  -->		<style>
 			button {
@@ -102,13 +102,6 @@
 				// Convert the screen coordinates into head-model origin/direction for hit testing
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
 													    								 engine.camera.projectionMatrix)
-
-				/*
-				// Add a box at the origin
-				const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
-				mat4.multiply(workingMatrix1, mat4.fromTranslation(mat4.create(), [origin[0], origin[1], 0]), csTransform)
-				engine.addBox([workingMatrix1[12], workingMatrix1[13], workingMatrix1[14]], [0.01, 0.01, 0.01], 0xffff66)
-				*/
 				console.log('normalized', normalizedX, normalizedY)
 				return session.requestHitTest(origin, direction, headFrameOfReference)
 			}
@@ -119,8 +112,8 @@
 					// TODO ONLY use one hit result to create a box!
 
 					// convert hit matrices from head to eye level coordinate systems
-					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
-					mat4.multiply(workingMatrix1, hit.hitMatrix, csTransform)
+					headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix1)
+					mat4.multiply(workingMatrix1, hit.hitMatrix, workingMatrix1)
 
 					// get an offset based on Y vec in the matrix transform, and size of cube
 					let offset = [workingMatrix1[1] * size * 0.5, workingMatrix1[5] * size * 0.5, workingMatrix1[9] * size * 0.5]

@@ -34,7 +34,7 @@ if (window.hasOwnProperty("Cesium")) {
     async function useSession(session) { 
         _XRsession = session
         try {
-            _headLevelFrameOfReference = await session.requestFrameOfReference('head-model')
+            let _headLevelFrameOfReference = await session.requestFrameOfReference('head-model')
             _eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
 
             if (!("geolocation" in navigator)) {
@@ -94,7 +94,6 @@ var _fixedToLocal = mat4.create()
 var _localToFixed = mat4.create()
 
 // need these for various computations
-var _headLevelFrameOfReference = null
 var _eyeLevelFrameOfReference = null
 
 // are we overriding the geoposition?
@@ -247,6 +246,7 @@ async function updatePositionCallback (position)
 
         try {
             // get a new Anchor right where the device is right now
+            let _headLevelFrameOfReference = await _XRsession.requestFrameOfReference('head-model')
             let newAnchor = await _XRsession.addAnchor(_identity, _headLevelFrameOfReference)
             newAnchor._isInternalGeoAnchor = true
             if (!_overrideGeolocation && _geoOriginAnchor) {
@@ -438,15 +438,17 @@ export default class XRGeospatialAnchor extends XRAnchor {
     static getDeviceElevation () {
         return new Promise((resolve, reject) => {
             enqueueOrExec( () => {
-                const transform = _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference)
-                mat4.getTranslation(_scratchVec3, transform)
-                let deviceLocalY = _scratchVec3[1]
+                _XRsession.requestFrameOfReference('head-model').then(_headLevelFrameOfReference => {
+                    _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference,_scratchMat4)
+                    mat4.getTranslation(_scratchVec3, _scratchMat4)
+                    let deviceLocalY = _scratchVec3[1]
 
-                mat4.getTranslation(_scratchVec3, currentGeoOriginAnchor().modelMatrix)
-                let geoAnchorY = _scratchVec3[1]
-                let altitudeDiff = deviceLocalY - geoAnchorY
+                    mat4.getTranslation(_scratchVec3, currentGeoOriginAnchor().modelMatrix)
+                    let geoAnchorY = _scratchVec3[1]
+                    let altitudeDiff = deviceLocalY - geoAnchorY
 
-                resolve(_geoOrigin.coords.altitude + altitudeDiff)
+                    resolve(_geoOrigin.coords.altitude + altitudeDiff)
+                })
             })
         })
     }
@@ -457,14 +459,16 @@ export default class XRGeospatialAnchor extends XRAnchor {
     static async getDeviceCartographic() {
         return new Promise((resolve, reject) => {
             enqueueOrExec( () => {
-                const transform = _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference)
-                mat4.getTranslation(_scratchVec3, transform)
-                mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
-                vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
-                vec3.transformMat4(_scratchVec3, _scratchVec3, _localToFixed)
+                _XRsession.requestFrameOfReference('head-model').then(_headLevelFrameOfReference => {
+                    _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference, _scratchMat4)
+                    mat4.getTranslation(_scratchVec3, _scratchMat4)
+                    mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
+                    vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
+                    vec3.transformMat4(_scratchVec3, _scratchVec3, _localToFixed)
 
-                let cartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
-                resolve(Cesium.Cartographic.fromCartesian(cartesian))
+                    let cartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
+                    resolve(Cesium.Cartographic.fromCartesian(cartesian))
+                })
             })
         })
     }
