@@ -3,7 +3,7 @@
 		<title>Geospatial AR example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<script src="../libs/three/three.min.js"></script>
+		<script src="../libs/three/three.js"></script>
 		<script src="../libs/Cesium.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
@@ -12,25 +12,16 @@
 		<div id="description">
 			<h2>Geospatial AR Example</h2>
 			<h5>(click to dismiss)</h5>
-			<p>This example displays some cubes to the North, South, East and West from the user's geospatial location.</p>
+			<p>This example displays some cubes to the North, South, East and West from the user's geospatial location. Tapping a cube tells the program to pretend the device is there.  Tapping anywhere else resets to using the real geolocation.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
-			function hideMe(event) { 
-				event.target.style.display = 'none' 
-				event.stopPropagation()
-			}
-			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
-
-			/// me    33.785507, -84.348274    lat lon
-			/// near  33.785398, -84.347829
-			// dif:  0.0001   0.0005
-
 			// some dependencies and utilities
 			import * as mat4 from '../libs/gl-matrix/mat4.js'
 			import * as vec3 from '../libs/gl-matrix/vec3.js'
 
 			import XREngine from "../XREngine.js"
+			import XRInputManager from "../XRInputManager.js"
 
 			let device = null
 			let session = null
@@ -43,62 +34,71 @@
 
 			let textBox = document.createElement('span')
 			textBox.setAttribute('id', 'text-box')
-			textBox.innerText = '0.0'
+			textBox.innerText = 'At device location'
 			document.body.appendChild(textBox)
 
+			var raycaster = new THREE.Raycaster();
+			var mouse = null
+			var boxes = []
 
 			////////////
+			var myGeoNode = null;
 			var myGeoAnchor = null
+
 			var myGeoLoc = null
-			var myCartographic = null
-
-
-			// function getGeolocation() {
-			// 	return new Promise((resolve, reject)=>{
-
-			// 		if (!("geolocation" in navigator)) {
-			// 			// fake it for now
-			// 			reject("no geolocation API")
-			// 		}
-
-			// 		function success(pos) {
-			// 			resolve(pos.coords)
-			// 		}
-
-			// 		function error(err) {
-			// 			reject(err)
-			// 		}
-
-			// 		try {
-			// 			let options = {
-			// 				enableHighAccuracy: true
-			// 			};
-			// 			navigator.geolocation.getCurrentPosition(success, error, options);
-			// 		} catch(err) {
-			// 			// unusual error - just return it
-			// 			reject(err)
-			// 		}
-			// 	})
-			// }
-			// 
-			// getGeolocation().then(geo => {
-			// 	myGeoLoc = {
-			// 		latitude: geo.latitude,
-			// 		longitude: geo.longitude,
-			// 		altitude: geo.altitude,
-			// 		accuracy: geo.accuracy,
-			// 		altitudeAccuracy: geo.altitudeAccuracy
-			// 	}
-
-			// 	console.log(geo)
-			// })
 
 			function updateScene() {
+			}
+				
+			async function moveGeoOrigin(intersection) {
+				if (intersection && intersection.object.parent && intersection.object.parent.anchor) {
+					let cartesian = intersection.object.parent.anchor.cartesian
+
+					let headFrameOfReference = await session.requestFrameOfReference('head-model')
+					eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+					headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+					let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+
+					if (myGeoAnchor) {
+						await session.removeAnchor(myGeoAnchor)
+					}
+					if (myGeoNode) {
+						myGeoNode.parent.visible = true
+					}
+
+					myGeoNode = intersection.object
+					myGeoNode.parent.visible = false
+					myGeoAnchor = anchor
+
+					XRGeospatialAnchor.overrideGeoLocation(cartesian, anchor)
+					return true
+				}
+			}
+
+			async function clearGeoOrigin()  {
+				if (myGeoAnchor) {
+					await session.removeAnchor(myGeoAnchor)
+				}
+				if (myGeoNode) {
+					myGeoNode.parent.visible = true
+				}
+				myGeoAnchor = null
+				myGeoNode = null
+
+				XRGeospatialAnchor.useDeviceGeolocation()
 			}
 
 			// samples received from the location API at this location, at one point
 			let testCartographic = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 275.12518310546875)
 			let testAltitude = 275.12518310546875
+
+			// some other pints you could play with.
+			//
+			// let streetCorner = Cesium.Cartographic.fromDegrees(-84.348134, 33.785437, 0)
+			// let upHillEast = Cesium.Cartographic.fromDegrees(-84.347461, 33.785337, 0)
+			// let yardNortWest = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 0)
+			// let intersectionSouth = Cesium.Cartographic.fromDegrees(-84.348160, 33.783789, 0)
 
 			const DIST = 0.001 * THREE.Math.DEG2RAD
 			function initializeScene() {
@@ -116,27 +116,24 @@
 					let north = Cesium.Cartographic.clone(cartographic)
 					north.latitude += DIST
 					XRGeospatialAnchor.createGeoAnchor(north).then(anchor => {
-						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("north"))					
 					})
 					let south = Cesium.Cartographic.clone(cartographic)
 					south.latitude -= DIST
 					XRGeospatialAnchor.createGeoAnchor(south).then(anchor => {
-						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("south"))					
 					})
 					let east = Cesium.Cartographic.clone(cartographic)
 					east.longitude += DIST
 					XRGeospatialAnchor.createGeoAnchor(east).then(anchor => {
-						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("east"))					
 					})
 					let west = Cesium.Cartographic.clone(cartographic)
 					west.longitude -= DIST
 					XRGeospatialAnchor.createGeoAnchor(west).then(anchor => {
-						myGeoAnchor = anchor
 						engine.addAnchoredNode(anchor, createSceneGraphNode("west"))					
 					})
+					
 				})
 
 				XRGeospatialAnchor.getDeviceElevation().then(altitude => {
@@ -158,9 +155,12 @@
 				texture.anisotropy = engine.renderer.capabilities.getMaxAnisotropy();
 				let material = new THREE.MeshLambertMaterial( { map: texture } );
 
-				let geometry = new THREE.BoxBufferGeometry(10, 10, 10)
+				let geometry = new THREE.BoxBufferGeometry(20, 20, 20)
 				let mesh = new THREE.Mesh(geometry, material)
 	
+				mesh.geoName = direction + " box"
+				boxes.push(mesh)
+
 				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
 				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
 
@@ -192,12 +192,34 @@
 				console.error('Error', err)
 			})
 
+			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
+			function hideMe(event) { 
+				event.target.style.display = 'none' 
+				event.stopPropagation()
+			}
+
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
 			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
 			function handleGoButtonTouch(event) { 
 				event.stopPropagation()
 			}
 
+			// handle input events from the XRInputManager
+			const inputManager = new XRInputManager(handleXRInput)
+			function handleXRInput(eventName, details){
+				switch(eventName){
+					case 'normalized-touch':
+						mouse =  new THREE.Vector2(...details.normalizedCoordinates)
+						break
+					default:
+						console.error('unknown xr input event', eventName, details)
+						break
+				}
+			}
+
+
+			/////////////////////
+			// Session startup / shutdown
 			function handleStartSessionRequest(ev){
 				if(device === null){
 					console.error('No xr device')
@@ -243,8 +265,6 @@
 
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
-
-				// use a logarithmic camera
 				engine = new XREngine(canvas, glContext, true)
 
 				createRootNode().then(() => {
@@ -274,8 +294,27 @@
 			// render loop			
 			function handleAnimationFrame(t, frame){
 				if(!session || session.ended) return
-				updateScene()
 				session.requestAnimationFrame(handleAnimationFrame)
+				updateScene()
+
+				if (mouse) {
+					// update the picking ray with the camera and mouse position
+					raycaster.setFromCamera( mouse, engine.camera );
+					mouse = null
+
+					// calculate objects intersecting the picking ray
+					var intersects = raycaster.intersectObjects( boxes );
+					let intersection = intersects.length ? intersects[0] : null
+					if (intersection) {
+						console.log("hit box: " + intersection.object.geoName)
+						textBox.innerText = 'At ' +  intersection.object.geoName + " box"
+						moveGeoOrigin(intersection)
+					} else {
+						console.log("miss, going back to device geolocation")
+						textBox.innerText = 'At device location'
+						clearGeoOrigin()
+					}
+				}
 
 				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
 				if(!pose){
