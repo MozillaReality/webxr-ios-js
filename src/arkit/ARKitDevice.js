@@ -17,6 +17,7 @@ styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
 styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
 styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
 
+
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
 		super(global)
@@ -37,6 +38,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		this._eyeLevelMatrix = mat4.identity(mat4.create())
 		this._stageMatrix = mat4.identity(mat4.create())
 		this._stageMatrix[13] = -1.3
+
+		this._baseFrameSet = false
+		this._frameOfRefRequestsWaiting = []
 
 		this._depthNear = 0.1
 		this._depthFar = 1000
@@ -160,18 +164,35 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		)
 	}
 
-	async requestFrameOfReferenceTransform(type, options){
-		switch(type){
-			case 'head-model':
-				return this._headModelMatrix
-			case 'eye-level':
-				return this._eyeLevelMatrix
-			case 'stage':
-				//return this._stageMatrix
-				throw new Error('stage not supported', type)
-			default:
-				throw new Error('Unsupported frame of reference type', type)
-		}
+	requestFrameOfReferenceTransform(type, options){
+		var that = this
+        return new Promise((resolve, reject) => {
+			let enqueueOrExec = function (callback) {
+				if (that._baseFrameSet) {
+					callback()
+				} else {
+					that._frameOfRefRequestsWaiting.push(callback)
+				}
+			}
+
+			switch(type){
+				case 'head-model':
+					enqueueOrExec(function () { 
+						resolve(that._headModelMatrix) 
+					})
+					return
+				case 'eye-level':
+					enqueueOrExec(function () { 
+						resolve(that._eyeLevelMatrix) 
+					})
+					return
+				case 'stage':
+					//return that._stageMatrix
+					reject(new Error('stage not supported', type))
+				default:
+					reject(new Error('Unsupported frame of reference type', type))
+			}
+		})
 	}
 
 	endSession(sessionId){
@@ -218,6 +239,21 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	setBaseViewMatrix(matrix){
 		mat4.copy(this._headModelMatrix, matrix)
+
+		if (!this._baseFrameSet) {
+			this._baseFrameSet = true
+
+			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
+				const callback = this._frameOfRefRequestsWaiting[i];
+				try {
+					callback()
+				} catch(e) {
+					console.error("finalization of reference frame requests failed: ", e)
+				}
+			}
+			this._frameOfRefRequestsWaiting = []
+		
+		}
 	}
 
 	requestStageBounds(){
