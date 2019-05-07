@@ -39,7 +39,6 @@ export default class XREngine {
 			logarithmicDepthBuffer: logarithmicDepth,
 			alpha: false
 		})
-
 		if (logarithmicDepth && !this._renderer.capabilities.logarithmicDepthBuffer) {
 			this._logarithmicDepth = false
 
@@ -49,14 +48,14 @@ export default class XREngine {
 		this._anchoredNodes = new Map() // { XRAnchorOffset, Three.js Object3D }
 
 		this._renderer.autoClear = false
-		this._renderer.setPixelRatio(1)
+		this._renderer.setPixelRatio(window.devicePixelRatio)
 	}
 
 	startFrame(){
 		this._renderer.clear()
 	}
 
-	render(viewport, projectionMatrix, viewMatrix){
+	preRender(viewport, projectionMatrix, viewMatrix){
 		this._camera.matrix.fromArray(viewMatrix)
 		this._camera.matrixWorldNeedsUpdate = true
 		this._camera.updateMatrixWorld()
@@ -66,8 +65,10 @@ export default class XREngine {
 			this._camera.projectionMatrix.elements[14] = PERSP_14
 		}
 
-		this._renderer.setSize(this._glCanvas.width, this._glCanvas.height, false)
+		this._renderer.setSize(this._glCanvas.offsetWidth, this._glCanvas.offsetHeight, false)
 		this._renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
+	}
+	render() {
 		this._renderer.clearDepth()
 		this._renderer.render(this._scene, this._camera)
 	}

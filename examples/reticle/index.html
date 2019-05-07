@@ -261,11 +261,12 @@
 
 				engine.startFrame()
 				for (let view of frame.views) {
-					engine.render(
+					engine.preRender(
 						session.baseLayer.getViewport(view),
 						view.projectionMatrix,
 						pose.getViewMatrix(view)
 					)
+					engine.render()
 					break
 				}
 				engine.endFrame()

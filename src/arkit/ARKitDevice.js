@@ -127,8 +127,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 		layer.context.canvas.style.width = "100%";
 		layer.context.canvas.style.height = "100%";
-		layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
-		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
+		// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+		// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
 	requestAnimationFrame(callback, ...params){
@@ -213,11 +213,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	getViewport(sessionId, eye, layer, target){
 		// A single viewport that covers the entire screen
-		const { width, height } = layer.context.canvas
+		const { offsetWidth, offsetHeight } = layer.context.canvas
 		target.x = 0
 		target.y = 0
-		target.width = width
-		target.height = height
+		target.width = offsetWidth
+		target.height = offsetHeight
 		return true
 	}
 
@@ -270,10 +270,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	onWindowResize(){
 		this._sessions.forEach((value, key) => {
-			var layer = value.baseLayer
-
-			layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
-			layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
+			// var layer = value.baseLayer
+			// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+			// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 		})
 	}
 }
