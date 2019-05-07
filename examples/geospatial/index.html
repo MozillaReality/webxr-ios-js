@@ -7,6 +7,7 @@
 		<script src="../libs/Cesium.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
+		<script src="../libs/three-web-layer.umd.js"></script>
 	</head>
 	<body>
 		<div id="description">
@@ -34,6 +35,7 @@
 
 			let textBox = document.createElement('span')
 			textBox.setAttribute('id', 'text-box')
+			//textBox.style.visibility = 'hidden'
 			textBox.innerText = 'At device location'
 			document.body.appendChild(textBox)
 
@@ -47,7 +49,46 @@
 
 			var myGeoLoc = null
 
+			// for moving DIVs to 3D
+			function beforeRasterize(webLayer) {
+				webLayer.element.style.visibility = "visible"
+			}
+			function afterRasterize(webLayer) {
+				webLayer.element.style.visibility = "hidden"
+			}
+			let layerOptions = {
+				onBeforeRasterize: beforeRasterize,
+				onAfterRasterize: afterRasterize
+			}
+
+			var descLayer = new WebLayer3D(document.getElementById('description'), layerOptions)
+			var textLayer = new WebLayer3D(document.getElementById('text-box'), layerOptions)
+
+			var clock = new THREE.Clock()
+			var hudNode = new THREE.Group()
+			hudNode.add(descLayer)
+			hudNode.add(textLayer)
+
+			hudNode.visible = false
+			const HUD_Z = 0.2  // 2cm in front of display
+
 			function updateScene() {
+				const deltaTime = clock.getDelta()
+    			//const elapsedTime = clock.getElapsedTime()
+	
+				descLayer.shouldUseTargetLayout = 'always'
+				textLayer.shouldUseTargetLayout = 'always'
+
+			    descLayer.update(1) //deltaTime*10)
+			    textLayer.update(1) //deltaTime*10)
+			}
+
+			function updateForView() {
+				let natural = WebLayer3D.computeNaturalDistance(engine.camera, engine.renderer)
+				let scale = (HUD_Z / natural)
+
+				//hudNode.scale.set(scale*window.devicePixelRatio, scale*window.devicePixelRatio, 1)
+				hudNode.scale.set(scale, scale, 1)
 			}
 				
 			async function moveGeoOrigin(intersection) {
@@ -102,6 +143,13 @@
 
 			const DIST = 0.001 * THREE.Math.DEG2RAD
 			function initializeScene() {
+				engine.camera.add(hudNode)
+				hudNode.position.set(0,0,-HUD_Z)
+
+				// go to where you should go ...
+			    descLayer.update(1)
+			    textLayer.update(1)
+	  
 				engine.addAmbientLight(0xffffff, 0.8)
 
 				// Add a box at the origin of our starting coordinate system
@@ -231,15 +279,19 @@
 						outputContext: xrContext,
 						alignEUS: true,
 						geolocation: true
-					 })
-						.then(handleSessionStarted)
-						.catch(err => {
-							console.error('Session setup error', err)
-						})
+					}).then(handleSessionStarted).catch(err => {
+						console.error('Session setup error', err)
+					})
+
+					//document.getElementById('description').style.visibility = 'hidden'
+					hudNode.visible = true
+
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = 'none' 
 				} else {
 					session.end()
 					handleSessionEnded();
+					document.getElementById('description').style.visibility = 'visible'
 					document.getElementById('description').style.display = 'block' 
 					document.getElementById('go-button').innerText = "Go"
 				}
@@ -324,11 +376,13 @@
 
 				engine.startFrame()
 				for (let view of frame.views) {
-					engine.render(
+					engine.preRender(
 						session.baseLayer.getViewport(view),
 						view.projectionMatrix,
 						pose.getViewMatrix(view)
 					)
+					updateForView()
+					engine.render()
 					break
 				}
 				engine.endFrame()
