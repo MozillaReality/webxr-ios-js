@@ -3,143 +3,208 @@
 		<title>Geospatial AR example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<script src="../libs/three.min.js"></script>
+		<script src="../libs/three/three.js"></script>
 		<script src="../libs/Cesium.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
-		<script src="../models/TeapotBufferGeometry.js"></script>
+		<script src="../libs/three-web-layer.umd.js"></script>
 	</head>
 	<body>
 		<div id="description">
 			<h2>Geospatial AR Example</h2>
 			<h5>(click to dismiss)</h5>
-			<p>This example displays the Utah Teapot positioned a short distance from the user's geospatial location.</p>
+			<p>This example displays some cubes to the North, South, East and West from the user's geospatial location. Tapping a cube tells the program to pretend the device is there.  Tapping anywhere else resets to using the real geolocation.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
-			function hideMe(event) { 
-				event.target.style.display = 'none' 
-				event.stopPropagation()
-			}
-			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
-
-			/// me    33.785507, -84.348274    lat lon
-			/// near  33.785398, -84.347829
-			// dif:  0.0001   0.0005
-
 			// some dependencies and utilities
 			import * as mat4 from '../libs/gl-matrix/mat4.js'
 			import * as vec3 from '../libs/gl-matrix/vec3.js'
 
 			import XREngine from "../XREngine.js"
+			import XRInputManager from "../XRInputManager.js"
 
 			let device = null
 			let session = null
-			let headFrameOfReference = null
 			let eyeLevelFrameOfReference = null
-			let layer = null
-			let frameOfReference = null
 			let engine = null
 			
 			// temporary working variables
-			const workingMatrix1 = mat4.create()
-			const identity = mat4.identity(mat4.create())
+			const workingMatrix = mat4.create()
+			const workingVec3 = vec3.create()
 
 			let textBox = document.createElement('span')
 			textBox.setAttribute('id', 'text-box')
-			textBox.innerText = '0.0'
+			//textBox.style.visibility = 'hidden'
+			textBox.innerText = 'At device location'
 			document.body.appendChild(textBox)
 
-
-			function getGeolocation() {
-				return new Promise((resolve, reject)=>{
-
-					if (!("geolocation" in navigator)) {
-						// fake it for now
-						reject("no geolocation API")
-					}
-
-					function success(pos) {
-						resolve(pos.coords)
-					}
-
-					function error(err) {
-						reject(err)
-					}
-
-					try {
-						let options = {
-							enableHighAccuracy: true
-						};
-						navigator.geolocation.getCurrentPosition(success, error, options);
-					} catch(err) {
-						// unusual error - just return it
-						reject(err)
-					}
-				})
-			}
+			var raycaster = new THREE.Raycaster();
+			var mouse = null
+			var boxes = []
 
 			////////////
+			var myGeoNode = null;
 			var myGeoAnchor = null
+
 			var myGeoLoc = null
-			var myCartographic = null
 
-			getGeolocation().then(geo => {
-				myGeoLoc = {
-					latitude: geo.latitude,
-					longitude: geo.longitude,
-					altitude: geo.altitude,
-					accuracy: geo.accuracy,
-					altitudeAccuracy: geo.altitudeAccuracy
-				}
+			// for moving DIVs to 3D
+			function beforeRasterize(webLayer) {
+				webLayer.element.style.visibility = "visible"
+			}
+			function afterRasterize(webLayer) {
+				webLayer.element.style.visibility = "hidden"
+			}
+			let layerOptions = {
+				onBeforeRasterize: beforeRasterize,
+				onAfterRasterize: afterRasterize
+			}
 
-				console.log(geo)
-			})
+			var descLayer = new WebLayer3D(document.getElementById('description'), layerOptions)
+			var textLayer = new WebLayer3D(document.getElementById('text-box'), layerOptions)
 
-			const DIST = 0.001
+			var clock = new THREE.Clock()
+			var hudNode = new THREE.Group()
+			hudNode.add(descLayer)
+			hudNode.add(textLayer)
+
+			hudNode.visible = false
+			const HUD_Z = 0.2  // 2cm in front of display
+
 			function updateScene() {
-				if (myGeoLoc) {
-					let north = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude, myGeoLoc.latitude+DIST, myGeoLoc.altitude)
-					XRGeospatialAnchor.createGeoAnchor(north).then(anchor => {
-						myGeoAnchor = anchor
-						engine.addAnchoredNode(anchor, createSceneGraphNode("north"))					
-					})
-					let south = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude, myGeoLoc.latitude-DIST, myGeoLoc.altitude)
-					XRGeospatialAnchor.createGeoAnchor(south).then(anchor => {
-						myGeoAnchor = anchor
-						engine.addAnchoredNode(anchor, createSceneGraphNode("south"))					
-					})
-					let east = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude+DIST, myGeoLoc.latitude, myGeoLoc.altitude)
-					XRGeospatialAnchor.createGeoAnchor(east).then(anchor => {
-						myGeoAnchor = anchor
-						engine.addAnchoredNode(anchor, createSceneGraphNode("east"))					
-					})
-					let west = Cesium.Cartographic.fromDegrees(myGeoLoc.longitude-DIST, myGeoLoc.latitude, myGeoLoc.altitude)
-					XRGeospatialAnchor.createGeoAnchor(west).then(anchor => {
-						myGeoAnchor = anchor
-						engine.addAnchoredNode(anchor, createSceneGraphNode("west"))					
-					})
-					myGeoLoc = null    // don't want to keep asking
-				}
-				if (myGeoAnchor) {
+				const deltaTime = clock.getDelta()
+    			//const elapsedTime = clock.getElapsedTime()
+	
+				descLayer.shouldUseTargetLayout = 'always'
+				textLayer.shouldUseTargetLayout = 'always'
 
+			    descLayer.update(1) //deltaTime*10)
+				textLayer.update(1) //deltaTime*10)
+				
+				if (mouse) {
+					// update the picking ray with the camera and mouse position
+					raycaster.setFromCamera( mouse, engine.camera );
+					mouse = null
+
+					if (descLayer.visible && descLayer.hitTest(raycaster.ray)) {
+						descLayer.visible = false
+					} else {
+						// calculate objects intersecting the picking ray
+						var intersects = raycaster.intersectObjects( boxes );
+						let intersection = intersects.length ? intersects[0] : null
+						if (intersection) {
+							console.log("hit box: " + intersection.object.geoName)
+							textBox.innerText = 'At ' +  intersection.object.geoName + " box"
+							moveGeoOrigin(intersection)
+						} else {
+							console.log("miss, going back to device geolocation")
+							textBox.innerText = 'At device location'
+							clearGeoOrigin()
+						}
+					}
 				}
 			}
 
+			function updateForView() {
+				let natural = WebLayer3D.computeNaturalDistance(engine.camera, engine.renderer)
+				let scale = (HUD_Z / natural)
+
+				//hudNode.scale.set(scale*window.devicePixelRatio, scale*window.devicePixelRatio, 1)
+				hudNode.scale.set(scale, scale, 1)
+			}
+				
+			async function moveGeoOrigin(intersection) {
+				if (intersection && intersection.object.parent && intersection.object.parent.anchor) {
+					let cartesian = intersection.object.parent.anchor.cartesian
+
+					let headFrameOfReference = await session.requestFrameOfReference('head-model')
+					eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+					headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+					let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+
+					if (myGeoAnchor) {
+						await session.removeAnchor(myGeoAnchor)
+					}
+					if (myGeoNode) {
+						myGeoNode.parent.visible = true
+					}
+
+					myGeoNode = intersection.object
+					myGeoNode.parent.visible = false
+					myGeoAnchor = anchor
+
+					XRGeospatialAnchor.overrideGeoLocation(cartesian, anchor)
+					return true
+				}
+			}
+
+			async function clearGeoOrigin()  {
+				if (myGeoAnchor) {
+					await session.removeAnchor(myGeoAnchor)
+				}
+				if (myGeoNode) {
+					myGeoNode.parent.visible = true
+				}
+				myGeoAnchor = null
+				myGeoNode = null
+
+				XRGeospatialAnchor.useDeviceGeolocation()
+			}
+
+			// samples received from the location API at this location, at one point
 			let testCartographic = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 275.12518310546875)
 			let testAltitude = 275.12518310546875
 
+			// some other pints you could play with.
+			//
+			// let streetCorner = Cesium.Cartographic.fromDegrees(-84.348134, 33.785437, 0)
+			// let upHillEast = Cesium.Cartographic.fromDegrees(-84.347461, 33.785337, 0)
+			// let yardNortWest = Cesium.Cartographic.fromDegrees(-84.34824477127631, 33.78545836417129, 0)
+			// let intersectionSouth = Cesium.Cartographic.fromDegrees(-84.348160, 33.783789, 0)
+
+			const DIST = 0.001 * THREE.Math.DEG2RAD
 			function initializeScene() {
+				engine.camera.add(hudNode)
+				hudNode.position.set(0,0,-HUD_Z)
+
+				// go to where you should go ...
+			    descLayer.update(1)
+			    textLayer.update(1)
+	  
 				engine.addAmbientLight(0xffffff, 0.8)
 
-				// Add a box and sphere at the origin of the eye-level coordinate system
-				engine.addBox([0, -0.25, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				engine.addSphere([0, -0.25, -0.2], [0.025, 0.025, 0.025], 0xff4444)
-				engine.addAxesHelper([0,-0.25,0], [0.2,0.2,0.2])		
+				// Add a box at the origin of our starting coordinate system
+				// engine.addBox([0, -0.25, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				// engine.addAxesHelper([0,-0.25,0], [0.2,0.2,0.2])		
 				
 				// some tests
 				XRGeospatialAnchor.getDeviceCartographic().then(cartographic => {
-					console.log("device cartographic: ", cartographic)
+					myGeoLoc = cartographic
+					console.log("device cartographic: ", myGeoLoc)
+
+					let north = Cesium.Cartographic.clone(cartographic)
+					north.latitude += DIST
+					XRGeospatialAnchor.createGeoAnchor(north).then(anchor => {
+						engine.addAnchoredNode(anchor, createSceneGraphNode("north"))					
+					})
+					let south = Cesium.Cartographic.clone(cartographic)
+					south.latitude -= DIST
+					XRGeospatialAnchor.createGeoAnchor(south).then(anchor => {
+						engine.addAnchoredNode(anchor, createSceneGraphNode("south"))					
+					})
+					let east = Cesium.Cartographic.clone(cartographic)
+					east.longitude += DIST
+					XRGeospatialAnchor.createGeoAnchor(east).then(anchor => {
+						engine.addAnchoredNode(anchor, createSceneGraphNode("east"))					
+					})
+					let west = Cesium.Cartographic.clone(cartographic)
+					west.longitude -= DIST
+					XRGeospatialAnchor.createGeoAnchor(west).then(anchor => {
+						engine.addAnchoredNode(anchor, createSceneGraphNode("west"))					
+					})
+					
 				})
 
 				XRGeospatialAnchor.getDeviceElevation().then(altitude => {
@@ -147,6 +212,7 @@
 				})
 
 				XRGeospatialAnchor.getDefaultElevation(testCartographic).then(altitude => {
+					console.log("recorded work elevation in past: ", testAltitude)
 					console.log("estimated world elevation: ", altitude)
 				})
 			}
@@ -160,9 +226,12 @@
 				texture.anisotropy = engine.renderer.capabilities.getMaxAnisotropy();
 				let material = new THREE.MeshLambertMaterial( { map: texture } );
 
-				let geometry = new THREE.BoxBufferGeometry(10, 10, 10)
+				let geometry = new THREE.BoxBufferGeometry(20, 20, 20)
 				let mesh = new THREE.Mesh(geometry, material)
 	
+				mesh.geoName = direction + " box"
+				boxes.push(mesh)
+
 				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
 				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
 
@@ -194,12 +263,34 @@
 				console.error('Error', err)
 			})
 
+			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
+			function hideMe(event) { 
+				event.target.style.display = 'none' 
+				event.stopPropagation()
+			}
+
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
 			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
 			function handleGoButtonTouch(event) { 
 				event.stopPropagation()
 			}
 
+			// handle input events from the XRInputManager
+			const inputManager = new XRInputManager(handleXRInput)
+			function handleXRInput(eventName, details){
+				switch(eventName){
+					case 'normalized-touch':
+						mouse =  new THREE.Vector2(...details.normalizedCoordinates)
+						break
+					default:
+						console.error('unknown xr input event', eventName, details)
+						break
+				}
+			}
+
+
+			/////////////////////
+			// Session startup / shutdown
 			function handleStartSessionRequest(ev){
 				if(device === null){
 					console.error('No xr device')
@@ -211,17 +302,24 @@
 						outputContext: xrContext,
 						alignEUS: true,
 						geolocation: true
-					 })
-						.then(handleSessionStarted)
-						.catch(err => {
-							console.error('Session setup error', err)
-						})
+					}).then(handleSessionStarted).catch(err => {
+						console.error('Session setup error', err)
+					})
+
+					//document.getElementById('description').style.visibility = 'hidden'
+					hudNode.visible = true
+
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = 'none' 
 				} else {
 					session.end()
 					handleSessionEnded();
+					document.getElementById('description').style.visibility = 'visible'
 					document.getElementById('description').style.display = 'block' 
 					document.getElementById('go-button').innerText = "Go"
+
+					hudNode.visible = false
+					descLayer.visible = true
 				}
 			}
 
@@ -245,35 +343,37 @@
 
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
-
-				// use a logarithmic camera
 				engine = new XREngine(canvas, glContext, true)
 
-				// head-model is the coordinate system that tracks the position of the display
-				session.requestFrameOfReference('head-model').then(frameOfReference =>{
-					headFrameOfReference = frameOfReference
-				})
-				.catch(err => {
-					console.error('Error finding head frame of reference', err)
-				})
-				// eye-level is the coordinate system of the ARKit tracking system 
-				session.requestFrameOfReference('eye-level').then(frameOfReference => {
-					eyeLevelFrameOfReference = frameOfReference
+				createRootNode().then(() => {
 					// Kick off rendering
 					session.requestAnimationFrame(handleAnimationFrame)
-				})
-				.catch(err => {
-					console.error('Error finding eye frame of reference', err)
 				})
 
 				initializeScene()
 			}
 
+			async function createRootNode() {
+				let headFrameOfReference = await session.requestFrameOfReference('head-model')
+				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+				// get the location of the device, and use it to create an 
+				// anchor with the identity orientation
+				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+				mat4.getTranslation(workingVec3, workingMatrix)
+				mat4.fromTranslation(workingMatrix, workingVec3)
+
+				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+				engine.addAnchoredNode(anchor, engine.root)
+				
+				return true
+			}
+
 			// render loop			
 			function handleAnimationFrame(t, frame){
 				if(!session || session.ended) return
-				updateScene()
 				session.requestAnimationFrame(handleAnimationFrame)
+				updateScene()
 
 				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
 				if(!pose){
@@ -283,12 +383,13 @@
 
 				engine.startFrame()
 				for (let view of frame.views) {
-					engine.render(
+					engine.preRender(
 						session.baseLayer.getViewport(view),
 						view.projectionMatrix,
 						pose.getViewMatrix(view)
 					)
-					break
+					updateForView()
+					engine.render()
 				}
 				engine.endFrame()
 			}

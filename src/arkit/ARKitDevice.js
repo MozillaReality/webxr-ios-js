@@ -8,14 +8,24 @@ import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
 import XRGeospatialAnchor from '../extensions/XRGeospatialAnchor.js';
 
-var styleEl = document.createElement('style');
-// Append <style> element to <head>
-document.head.appendChild(styleEl);
-// Grab style element's sheet
-var styleSheet = styleEl.sheet;
-styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
-styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
-styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
+
+window.addEventListener('DOMContentLoaded', () => {
+	setTimeout(() => {
+		try {
+			var styleEl = document.createElement('style');
+			// Append <style> element to <head>
+			document.head.appendChild(styleEl);
+			// Grab style element's sheet
+			var styleSheet = styleEl.sheet;
+			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
+
+		} catch(e) {
+			console.error('page error', e)
+		}
+	}, 1)
+})
 
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
@@ -37,6 +47,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		this._eyeLevelMatrix = mat4.identity(mat4.create())
 		this._stageMatrix = mat4.identity(mat4.create())
 		this._stageMatrix[13] = -1.3
+
+		this._baseFrameSet = false
+		this._frameOfRefRequestsWaiting = []
 
 		this._depthNear = 0.1
 		this._depthFar = 1000
@@ -61,7 +74,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		// true if:
 		//  not (geolocation and not alignEUS)  ==>  can only use geolocation if aligneus is true
 		//  not immersive
-		return  !(!options.alignEUS && options.geolocation) && !options.immersive
+		return  !(!options.hasOwnProperty("alignEUS") && 
+				   options.hasOwnProperty("geolocation") && 
+				  !options.hasOwnProperty("immersive"))
 	}
 
 	async requestSession(options={}){
@@ -79,17 +94,17 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 
 		var ARKitOptions = {}
-		if (options.worldSensing) {
+		if (options.hasOwnProperty("worldSensing")) {
 			ARKitOptions.worldSensing = options.worldSensing
 		}
-		if (options.computerVision) {
+		if (options.hasOwnProperty("computerVision")) {
 			ARKitOptions.videoFrames = options.useComputerVision
 		}
-		if (options.alignEUS) {
+		if (options.hasOwnProperty("alignEUS")) {
 			ARKitOptions.alignEUS = options.alignEUS
 		}
 		var geolocation = false
-		if (options.geolocation && options.alignEUS) {
+		if (options.hasOwnProperty("geolocation") && options.hasOwnProperty("alignEUS")) {
 			geolocation = true
 		}
 		let initResult = await this._arKitWrapper.waitForInit().then(() => {
@@ -123,8 +138,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 		layer.context.canvas.style.width = "100%";
 		layer.context.canvas.style.height = "100%";
-		layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
-		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
+		// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+		// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
 	requestAnimationFrame(callback, ...params){
@@ -160,18 +175,35 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		)
 	}
 
-	async requestFrameOfReferenceTransform(type, options){
-		switch(type){
-			case 'head-model':
-				return this._headModelMatrix
-			case 'eye-level':
-				return this._eyeLevelMatrix
-			case 'stage':
-				//return this._stageMatrix
-				throw new Error('stage not supported', type)
-			default:
-				throw new Error('Unsupported frame of reference type', type)
-		}
+	requestFrameOfReferenceTransform(type, options){
+		var that = this
+        return new Promise((resolve, reject) => {
+			let enqueueOrExec = function (callback) {
+				if (that._baseFrameSet) {
+					callback()
+				} else {
+					that._frameOfRefRequestsWaiting.push(callback)
+				}
+			}
+
+			switch(type){
+				case 'head-model':
+					enqueueOrExec(function () { 
+						resolve(that._headModelMatrix) 
+					})
+					return
+				case 'eye-level':
+					enqueueOrExec(function () { 
+						resolve(that._eyeLevelMatrix) 
+					})
+					return
+				case 'stage':
+					//return that._stageMatrix
+					reject(new Error('stage not supported', type))
+				default:
+					reject(new Error('Unsupported frame of reference type', type))
+			}
+		})
 	}
 
 	endSession(sessionId){
@@ -192,11 +224,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	getViewport(sessionId, eye, layer, target){
 		// A single viewport that covers the entire screen
-		const { width, height } = layer.context.canvas
+		const { offsetWidth, offsetHeight } = layer.context.canvas
 		target.x = 0
 		target.y = 0
-		target.width = width
-		target.height = height
+		target.width = offsetWidth
+		target.height = offsetHeight
 		return true
 	}
 
@@ -218,6 +250,21 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	setBaseViewMatrix(matrix){
 		mat4.copy(this._headModelMatrix, matrix)
+
+		if (!this._baseFrameSet) {
+			this._baseFrameSet = true
+
+			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
+				const callback = this._frameOfRefRequestsWaiting[i];
+				try {
+					callback()
+				} catch(e) {
+					console.error("finalization of reference frame requests failed: ", e)
+				}
+			}
+			this._frameOfRefRequestsWaiting = []
+		
+		}
 	}
 
 	requestStageBounds(){
@@ -234,10 +281,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	onWindowResize(){
 		this._sessions.forEach((value, key) => {
-			var layer = value.baseLayer
-
-			layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
-			layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
+			// var layer = value.baseLayer
+			// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+			// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 		})
 	}
 }

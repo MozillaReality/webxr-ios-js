@@ -29,6 +29,8 @@ export default class XREngine {
 			logarithmicDepth? FAR : 1000)
 		this._camera.matrixAutoUpdate = false
 		this._scene = new THREE.Scene()
+		this._root = new THREE.Group()
+		this._scene.add(this._root)
 		this._scene.add(this._camera)
 		this._renderer = new THREE.WebGLRenderer({
 			canvas: this._glCanvas,
@@ -37,7 +39,6 @@ export default class XREngine {
 			logarithmicDepthBuffer: logarithmicDepth,
 			alpha: false
 		})
-
 		if (logarithmicDepth && !this._renderer.capabilities.logarithmicDepthBuffer) {
 			this._logarithmicDepth = false
 
@@ -47,14 +48,14 @@ export default class XREngine {
 		this._anchoredNodes = new Map() // { XRAnchorOffset, Three.js Object3D }
 
 		this._renderer.autoClear = false
-		this._renderer.setPixelRatio(1)
+		this._renderer.setPixelRatio(window.devicePixelRatio)
 	}
 
 	startFrame(){
 		this._renderer.clear()
 	}
 
-	render(viewport, projectionMatrix, viewMatrix){
+	preRender(viewport, projectionMatrix, viewMatrix){
 		this._camera.matrix.fromArray(viewMatrix)
 		this._camera.matrixWorldNeedsUpdate = true
 		this._camera.updateMatrixWorld()
@@ -64,8 +65,10 @@ export default class XREngine {
 			this._camera.projectionMatrix.elements[14] = PERSP_14
 		}
 
-		this._renderer.setSize(this._glCanvas.width, this._glCanvas.height, false)
+		this._renderer.setSize(this._glCanvas.offsetWidth, this._glCanvas.offsetHeight, false)
 		this._renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
+	}
+	render() {
 		this._renderer.clearDepth()
 		this._renderer.render(this._scene, this._camera)
 	}
@@ -73,6 +76,7 @@ export default class XREngine {
 	endFrame(){}
 
 	get scene(){ return this._scene }
+	get root(){ return this._root }
 	get camera() { return this._camera }
 	get renderer() { return this._renderer }
 
@@ -83,14 +87,14 @@ export default class XREngine {
 	addDirectionalLight(color=0xffffff, intensity=0.7, position=[0, 10, 20]){
 		const light = new THREE.DirectionalLight(color, intensity)
 		light.position.set(...position)
-		this._scene.add(light)
-		this._scene.add(light.target)
+		this._root.add(light)
+		this._root.add(light.target)
 		return light
 	}
 
-	addAmbientLight(color=0xffffff, intensity=0.2){
+	addAmbientLight(color=0xffffff, intensity=0.3){
 		const light = new THREE.AmbientLight(color, intensity)
-		this._scene.add(light)
+		this._root.add(light)
 		return light
 	}
 
@@ -100,7 +104,7 @@ export default class XREngine {
 			new THREE.MeshLambertMaterial({ color: color })
 		)
 		sphere.position.set(...position)
-		this._scene.add(sphere)
+		this._root.add(sphere)
 		return sphere
 	}
 
@@ -111,7 +115,7 @@ export default class XREngine {
 			side: THREE.DoubleSide })
 		const mesh = new THREE.Mesh(geometry, material)
 		mesh.position.set(...position)
-		this._scene.add(mesh)
+		this._root.add(mesh)
 		return mesh
 	}
 
@@ -121,14 +125,14 @@ export default class XREngine {
 			new THREE.MeshLambertMaterial({ color: color })
 		)
 		box.position.set(...position)
-		this._scene.add(box)
+		this._root.add(box)
 		return box
 	}
 	
 	addAxesHelper( position=[0,0,0], size=[1,1,1] ) {
 		let helper = this.createAxesHelper(size)
 		helper.position.set(...position)
-		this._scene.add(helper)
+		this._root.add(helper)
 		return helper;
 	}
 
@@ -230,16 +234,16 @@ export default class XREngine {
 	
 	fillInGLTFScene(path, position=[0, 0, -2], scale=[1, 1, 1]){
 		let ambientLight = new THREE.AmbientLight('#FFF', 1)
-		this._scene.add(ambientLight)
+		this._root.add(ambientLight)
 	
 		let directionalLight = new THREE.DirectionalLight('#FFF', 0.6)
-		this._scene.add(directionalLight)
+		this._root.add(directionalLight)
 	
 		this.loadGLTF(path).then(gltf => {
 			gltf.scene.scale.set(...scale)
 			gltf.scene.position.set(...position)
 			//gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / -2)
-			this._scene.add(gltf.scene)
+			this._root.add(gltf.scene)
 		}).catch((...params) =>{
 			console.error('could not load gltf', ...params)
 		})

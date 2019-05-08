@@ -954,14 +954,23 @@ export default class ARKitWrapper extends EventTarget {
 			this._rAF_callback = null
 			this._rAF_callbackParams = []
 
+
+			// // add a tiny delay, which will hopefully help with the rendering 
+			// // race conditions caused by SceneKit on fast devices, until we move to Metal
+			// let sleep = function (time) {
+			// 	return new Promise((resolve) => setTimeout(resolve, time));
+			// }
+			
 			return window.requestAnimationFrame((...params) => {
-				this.startingRender()
-				try {
-					_callback(..._params)
-				} catch(e) {
-					console.error('application callback error: ', e)
-				}	
-				this.finishedRender()
+			  // sleep(1).then(() => {
+					this.startingRender()
+					try {
+						_callback(..._params)
+					} catch(e) {
+						console.error('application callback error: ', e)
+					}	
+					this.finishedRender()
+				// })
 			})
 		}
 	}
@@ -988,11 +997,6 @@ export default class ARKitWrapper extends EventTarget {
 		this._rawARData = data
 		var plane, anchor
 
-		// if there's a rAF waiting, schedule it
-		if (this._rAF_callback) {
-			this._do_rAF()
-		}
-		this._dataBeforeNext++  
 		this._worldInformation = null
 
 		this._timestamp = this._adjustARKitTime(data.timestamp)
@@ -1047,6 +1051,12 @@ export default class ARKitWrapper extends EventTarget {
 		} catch(e) {
 				console.error('WATCH_EVENT event error', e)
 		}
+
+		// if there's a rAF waiting, schedule it
+		if (this._rAF_callback) {
+			this._do_rAF()
+		}
+		this._dataBeforeNext++  
 
 	}
 

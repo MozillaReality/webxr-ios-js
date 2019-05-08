@@ -2,9 +2,7 @@ import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill'
 import {PRIVATE} from 'webxr-polyfill/src/api/XRFrameOfReference'
 
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
-import * as mat3 from 'gl-matrix/src/gl-matrix/mat3'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
-import * as quat from 'gl-matrix/src/gl-matrix/quat'
 
 import API from './extensions/index';
 
@@ -14,7 +12,7 @@ import ARKitWrapper from './arkit/ARKitWrapper'
 import XRHitResult from './extensions/XRHitResult'
 
 const _workingMatrix = mat4.create()
-const PI_OVER_180 = Math.PI / 180
+const _workingMatrix2 = mat4.create()
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchRequestDevice = function(){
@@ -39,15 +37,20 @@ Now install a few proposed AR extensions to the WebXR Device API:
 - anchors: https://github.com/immersive-web/anchors
 */
 
-function _xrFrameOfReferenceGetTransformTo(otherFoR){
-	return _getTransformTo(this[PRIVATE].transform, otherFoR[PRIVATE].transform)
+// Note from BLAIR:
+// I'm ALMOST POSITIVE this is wrong:  we can't assume frames of reference have
+// transforms, it's just that we are always giving absolute transforms in this patched
+// polyfill, and NOT treating "eye-level" and "head-model" the way they should be.
+// All of this will change when the polyfill is updated to the final spec.
+function _xrFrameOfReferenceGetTransformTo(otherFoR, out){
+	return _getTransformTo(this[PRIVATE].transform, otherFoR[PRIVATE].transform, out)
 }
 
-function _getTransformTo(sourceMatrix, destinationMatrix){
+function _getTransformTo(sourceMatrix, destinationMatrix, out){
 	mat4.invert(_workingMatrix, destinationMatrix)
-	let out = mat4.identity(mat4.create())
-	mat4.multiply(out, _workingMatrix, out)
-	return mat4.multiply(out, sourceMatrix, out)
+	//let out = mat4.identity(mat4.create())
+	//mat4.multiply(out, _workingMatrix, out)
+	return mat4.multiply(out, sourceMatrix, _workingMatrix)
 }
 
 const _arKitWrapper = ARKitWrapper.GetOrCreate()
@@ -87,13 +90,13 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 			// const hit = _arKitWrapper.pickBestHit(hits)
 
 			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
-				const csTransform = eyeLevelFrameOfReference.getTransformTo(coordinateSystem)
+				eyeLevelFrameOfReference.getTransformTo(coordinateSystem, _workingMatrix)
 				//console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
 				resolve(hits.map(hit => {
-					const hitInHeadMatrix = mat4.multiply(mat4.create(), csTransform, hit.world_transform)
+					mat4.multiply(_workingMatrix2, _workingMatrix, hit.world_transform)
 					//console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
 					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
-					return new XRHitResult(hitInHeadMatrix, hit, _arKitWrapper._timestamp)
+					return new XRHitResult(_workingMatrix2, hit, _arKitWrapper._timestamp)
 				}))
 			}).catch((...params) => {
 				console.error('Error testing for hits', ...params)
@@ -147,8 +150,8 @@ async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
 				// need to get the data in eye-level reference frame.  In this polyfill,
 				// 
 				this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
-					const transform = frameOfReference.getTransformTo(eyeLevelFrameOfReference)
-					const anchorInWorldMatrix = mat4.multiply(mat4.create(), transform, value)
+					frameOfReference.getTransformTo(eyeLevelFrameOfReference, _workingMatrix)
+					const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value)
 
 					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(anchor => {
 						resolve(anchor)

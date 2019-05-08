@@ -59,6 +59,6 @@ button {
     outline: 1px solid rgba(127,255,255,0.75);
     border: 0px;
     padding: 5px 10px;
-    transform: translate(-50%, 0%);
+    margin: 0px 0 0 -50px;
     font-size: 0.8em;
 }

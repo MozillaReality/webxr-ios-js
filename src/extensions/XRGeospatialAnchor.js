@@ -8,46 +8,60 @@ import XRDevice from 'webxr-polyfill/src/api/XRDevice'
 
 /* ** path the XRSession
 */ 
-if (window.hasOwnProperty("Cesium")) {
-    var __XRDevice_requestSession = XRDevice.prototype.requestSession
-    XRDevice.prototype.requestSession = async function (options) {
-        let bindrequest = __XRDevice_requestSession.bind(this)
-        let session = await bindrequest(options)
+var __XRDevice_requestSession = XRDevice.prototype.requestSession
+XRDevice.prototype.requestSession = async function (options) {
+    let bindrequest = __XRDevice_requestSession.bind(this)
+    let session = await bindrequest(options)
 
-        if (options.alignEUS && options.geolocation) {
-            const onSessionEnd = () => {
-                _XRsession = null
-                if (_watchID) {
-                    navigator.geolocation.clearWatch(_watchID);
-                    _watchID = 0
-                }
-                resetState()
-                session.removeEventListener('end', onSessionEnd);        
+    // must have Cesium loaded by the time you request a session or Geo won't work
+    if (window.hasOwnProperty("Cesium") && options.alignEUS && options.geolocation) {
+        const onSessionEnd = () => {
+            _XRsession = null
+            if (_watchID) {
+                navigator.geolocation.clearWatch(_watchID);
+                _watchID = 0
             }
-            
-            session.addEventListener('end', onSessionEnd);
-            await useSession(session)
+            resetState()
+            session.removeEventListener('end', onSessionEnd);        
         }
-        return session
+        
+        session.addEventListener('end', onSessionEnd);
+        await useSession(session)
     }
+    return session
+}
 
-    async function useSession(session) { 
-        _XRsession = session
-        try {
-            _headLevelFrameOfReference = await session.requestFrameOfReference('head-model')
-            _eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+async function useSession(session) { 
+    _XRsession = session
 
-            if (!("geolocation" in navigator)) {
-                return false
-            }
+    if (!_eastUpSouthToFixedFrame) {
+        _eastUpSouthToFixedFrame = Cesium.Transforms.localFrameToFixedFrameGenerator('east','up');
+    }
+    if (!defaultTerrainProvider) {
+        defaultTerrainProvider = new MapzenTerrariumTerrainProvider({
+            url : 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/',
+            requestWaterMask : true,
+            requestVertexNormals : true
+        })
+    }
+    if (!_scratchCartesian) {
+        _scratchCartesian = new Cesium.Cartesian3()
+    }
+    
+    try {
+        let _headLevelFrameOfReference = await session.requestFrameOfReference('head-model')
+        _eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
 
-            _watchID = navigator.geolocation.watchPosition(updatePositionCallback, geoErrorCallback, _geo_options)
-            
-            return true;
-        } catch (err) {
-            console.error("Can't start geolocation to XR mapping", err)
-            return false;
+        if (!("geolocation" in navigator)) {
+            return false
         }
+
+        _watchID = navigator.geolocation.watchPosition(updatePositionCallback, geoErrorCallback, _geo_options)
+        
+        return true;
+    } catch (err) {
+        console.error("Can't start geolocation to XR mapping", err)
+        return false;
     }
 }
 
@@ -66,9 +80,6 @@ var _scratchMat4 = mat4.create()
 var _scratchMat3 = mat3.create()
 
 var _scratchCartesian = null
-if (window.hasOwnProperty("Cesium")) {
-    _scratchCartesian = new Cesium.Cartesian3()
-}
 
 /****
  * state variables
@@ -87,14 +98,10 @@ var _geoAnchorsWaiting = []
 
 // our current transforms to and from geospatial coordinates
 var _eastUpSouthToFixedFrame = null
-if (window.hasOwnProperty("Cesium")) {
-    _eastUpSouthToFixedFrame = Cesium.Transforms.localFrameToFixedFrameGenerator('east','up');
-}
 var _fixedToLocal = mat4.create()
 var _localToFixed = mat4.create()
 
 // need these for various computations
-var _headLevelFrameOfReference = null
 var _eyeLevelFrameOfReference = null
 
 // are we overriding the geoposition?
@@ -150,13 +157,6 @@ async function getAltitude(cart) {
 }
 
 var defaultTerrainProvider = null
-if (window.hasOwnProperty("Cesium")) {
-    defaultTerrainProvider = new MapzenTerrariumTerrainProvider({
-        url : 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/',
-        requestWaterMask : true,
-        requestVertexNormals : true
-    })
-}
 
 function updateHeightFromTerrain(cartographic) {
     return Promise.resolve(Cesium.sampleTerrain(defaultTerrainProvider, 15, [cartographic]).then(results => {
@@ -247,6 +247,7 @@ async function updatePositionCallback (position)
 
         try {
             // get a new Anchor right where the device is right now
+            let _headLevelFrameOfReference = await _XRsession.requestFrameOfReference('head-model')
             let newAnchor = await _XRsession.addAnchor(_identity, _headLevelFrameOfReference)
             newAnchor._isInternalGeoAnchor = true
             if (!_overrideGeolocation && _geoOriginAnchor) {
@@ -438,15 +439,17 @@ export default class XRGeospatialAnchor extends XRAnchor {
     static getDeviceElevation () {
         return new Promise((resolve, reject) => {
             enqueueOrExec( () => {
-                const transform = _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference)
-                mat4.getTranslation(_scratchVec3, transform)
-                let deviceLocalY = _scratchVec3[1]
+                _XRsession.requestFrameOfReference('head-model').then(_headLevelFrameOfReference => {
+                    _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference,_scratchMat4)
+                    mat4.getTranslation(_scratchVec3, _scratchMat4)
+                    let deviceLocalY = _scratchVec3[1]
 
-                mat4.getTranslation(_scratchVec3, currentGeoOriginAnchor().modelMatrix)
-                let geoAnchorY = _scratchVec3[1]
-                let altitudeDiff = deviceLocalY - geoAnchorY
+                    mat4.getTranslation(_scratchVec3, currentGeoOriginAnchor().modelMatrix)
+                    let geoAnchorY = _scratchVec3[1]
+                    let altitudeDiff = deviceLocalY - geoAnchorY
 
-                resolve(_geoOrigin.coords.altitude + altitudeDiff)
+                    resolve(_geoOrigin.coords.altitude + altitudeDiff)
+                })
             })
         })
     }
@@ -457,14 +460,16 @@ export default class XRGeospatialAnchor extends XRAnchor {
     static async getDeviceCartographic() {
         return new Promise((resolve, reject) => {
             enqueueOrExec( () => {
-                const transform = _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference)
-                mat4.getTranslation(_scratchVec3, transform)
-                mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
-                vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
-                vec3.transformMat4(_scratchVec3, _scratchVec3, _localToFixed)
+                _XRsession.requestFrameOfReference('head-model').then(_headLevelFrameOfReference => {
+                    _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference, _scratchMat4)
+                    mat4.getTranslation(_scratchVec3, _scratchMat4)
+                    mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
+                    vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
+                    vec3.transformMat4(_scratchVec3, _scratchVec3, _localToFixed)
 
-                let cartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
-                resolve(Cesium.Cartographic.fromCartesian(cartesian))
+                    let cartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
+                    resolve(Cesium.Cartographic.fromCartesian(cartesian))
+                })
             })
         })
     }
