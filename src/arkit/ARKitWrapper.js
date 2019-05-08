@@ -954,12 +954,15 @@ export default class ARKitWrapper extends EventTarget {
 			this._rAF_callback = null
 			this._rAF_callbackParams = []
 
+
+			// // add a tiny delay, which will hopefully help with the rendering 
+			// // race conditions caused by SceneKit on fast devices, until we move to Metal
 			// let sleep = function (time) {
 			// 	return new Promise((resolve) => setTimeout(resolve, time));
 			// }
 			
 			return window.requestAnimationFrame((...params) => {
-				// sleep(5).then(() => {
+			  // sleep(1).then(() => {
 					this.startingRender()
 					try {
 						_callback(..._params)

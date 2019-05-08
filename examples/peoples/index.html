@@ -116,7 +116,7 @@
 					engine.camera.updateMatrixWorld()
 					engine.camera.projectionMatrix.fromArray(view.projectionMatrix)
 
-					engine.renderer.setSize(canvas.width, canvas.height, false)
+					engine.renderer.setSize(canvas.offsetWidth, canvas.offsetHeight, false)
 					let viewport = session.baseLayer.getViewport(view)
 					engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
 
@@ -150,7 +150,7 @@
 					geometries[Math.floor(geometries.length * Math.random())], 
 					0.006,
 					0,0,0, 
-					0.025, 
+					0.005, 
 					colors[Math.floor(colors.length * Math.random())],
 					true
 				))
@@ -363,10 +363,12 @@
 							console.error('Session setup error', err)
 						})
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = "none"
 				} else {
 					session.end()
 					handleSessionEnded();
 					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').style.display = "block"
 					document.getElementById('go-button').innerText = "Go"
 				}
 			}

@@ -8,6 +8,12 @@
 	<script src="../libs/three/loaders/GLTFLoader.js"></script>
     <script src="../libs/dat.gui.min.js"></script>
     <script module src="../../dist/webxr.js"></script>
+    <style>
+        .dg { 
+            margin-top:30px !important;
+            }
+    </style>
+    <!-- <script module src="../../dist/webxr.js"></script> -->
 </head>
 <body>
     <div id="description">
@@ -174,7 +180,7 @@
 
         function handleRemoveNode(object) {
             object.geometry.dispose()
-            engine.removeAnchoredNode(object.node);
+            engine.removeAnchoredNode(object.faceMesh);
             meshMap.delete(object.worldMesh.uid)
         }
 
@@ -326,15 +332,16 @@
                         console.error('Session setup error', err)
                     })
                 document.getElementById('go-button').innerText = "End"
-                //document.getElementById('go-button').style.display = 'none' 
+                document.getElementById('go-button').style.display = 'none' 
                 document.body.appendChild(gui.domElement);
 
             } else {
                 session.end()
                 handleSessionEnded();
                 document.getElementById('description').style.display = 'block' 
+                document.getElementById('go-button').style.display = "block"
                 document.getElementById('go-button').innerText = "Go"
-                document.body.appendChild(gui.domElement);
+                document.body.removeChild(gui.domElement);
             }
         }
 
@@ -416,7 +423,6 @@
 						pose.getViewMatrix(view)
 					)
                 engine.render()
-                break
             }
         }
 </script>

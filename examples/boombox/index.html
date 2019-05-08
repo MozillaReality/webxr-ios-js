@@ -121,10 +121,12 @@
 							console.error('Session setup error', err)
 						})
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = "none"
 				} else {
 					session.end()
 					handleSessionEnded();
 					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').style.display = "block"
 					document.getElementById('go-button').innerText = "Go"
 				}
 			}
@@ -193,7 +195,6 @@
 						pose.getViewMatrix(view)
 					)
 					engine.render()
-					break
 				}
 				engine.endFrame()
 			}

@@ -80,7 +80,30 @@
 				textLayer.shouldUseTargetLayout = 'always'
 
 			    descLayer.update(1) //deltaTime*10)
-			    textLayer.update(1) //deltaTime*10)
+				textLayer.update(1) //deltaTime*10)
+				
+				if (mouse) {
+					// update the picking ray with the camera and mouse position
+					raycaster.setFromCamera( mouse, engine.camera );
+					mouse = null
+
+					if (descLayer.visible && descLayer.hitTest(raycaster.ray)) {
+						descLayer.visible = false
+					} else {
+						// calculate objects intersecting the picking ray
+						var intersects = raycaster.intersectObjects( boxes );
+						let intersection = intersects.length ? intersects[0] : null
+						if (intersection) {
+							console.log("hit box: " + intersection.object.geoName)
+							textBox.innerText = 'At ' +  intersection.object.geoName + " box"
+							moveGeoOrigin(intersection)
+						} else {
+							console.log("miss, going back to device geolocation")
+							textBox.innerText = 'At device location'
+							clearGeoOrigin()
+						}
+					}
+				}
 			}
 
 			function updateForView() {
@@ -294,6 +317,9 @@
 					document.getElementById('description').style.visibility = 'visible'
 					document.getElementById('description').style.display = 'block' 
 					document.getElementById('go-button').innerText = "Go"
+
+					hudNode.visible = false
+					descLayer.visible = true
 				}
 			}
 
@@ -349,25 +375,6 @@
 				session.requestAnimationFrame(handleAnimationFrame)
 				updateScene()
 
-				if (mouse) {
-					// update the picking ray with the camera and mouse position
-					raycaster.setFromCamera( mouse, engine.camera );
-					mouse = null
-
-					// calculate objects intersecting the picking ray
-					var intersects = raycaster.intersectObjects( boxes );
-					let intersection = intersects.length ? intersects[0] : null
-					if (intersection) {
-						console.log("hit box: " + intersection.object.geoName)
-						textBox.innerText = 'At ' +  intersection.object.geoName + " box"
-						moveGeoOrigin(intersection)
-					} else {
-						console.log("miss, going back to device geolocation")
-						textBox.innerText = 'At device location'
-						clearGeoOrigin()
-					}
-				}
-
 				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
 				if(!pose){
 					console.log('No pose')
@@ -383,7 +390,6 @@
 					)
 					updateForView()
 					engine.render()
-					break
 				}
 				engine.endFrame()
 			}

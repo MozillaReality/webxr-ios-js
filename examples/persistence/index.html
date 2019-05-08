@@ -245,6 +245,7 @@
 							console.error('Session setup error', err)
 						})
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = "none"
 					document.getElementById('set-button').style.display = 'block' 
 					document.getElementById('get-button').style.display = 'block' 
 				} else {
@@ -253,6 +254,7 @@
 					document.getElementById('description').style.display = 'block' 
 					document.getElementById('set-button').style.display = 'none' 
 					document.getElementById('get-button').style.display = 'none' 
+					document.getElementById('go-button').style.display = "block"
 					document.getElementById('go-button').innerText = "Go"
 				}
 			}
@@ -324,7 +326,6 @@
 						pose.getViewMatrix(view)
 					)
 					engine.render()
-					break
 				}
 				engine.endFrame()
 			}
