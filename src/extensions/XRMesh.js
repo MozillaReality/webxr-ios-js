@@ -11,7 +11,7 @@ export default class XRMesh extends XRAnchor {
     // this will be called from ARKitWrapper if it's set up to use arrays instead of 
     // dictionaries for the data
     static setUseGeomArrays() { _useGeomArrays = true }
-
+    static useGeomArrays() {return _useGeomArrays}
 
 	constructor(transform, geometry, uid=null, timestamp=0) {
         super(transform, uid, timestamp)
@@ -111,35 +111,43 @@ export default class XRMesh extends XRAnchor {
 
         // if there are a different number of vertices, or triangles, things have
         // definitly changed
-        let currentVertexIndex = 0
-        if (this._vertexPositions.length != g.vertexCount * 3 ||
-            this._triangleIndices.length != g.triangleCount * 3) {
-            this._vertexCountChanged = true
 
+        if (typeof g.vertexCount === 'undefined') {
+            console.warn("bad geometry data passed to XRMesh._updateGeometry: no vertex count", g)
+            return
+        }
+
+        let currentVertexIndex = 0
+            
+        if (this._vertexPositions.length != g.vertexCount * 3) {
+            if (typeof g.vertices === 'undefined') {
+                console.warn("bad geometry data passed to XRMesh._updateGeometry: no vertices", g)
+                return
+            }
+            this._vertexCountChanged = true
             this._vertexPositionsChanged = true
             this._vertexPositions = new Float32Array( g.vertexCount * 3 );
 
-            this._textureCoordinatesChanged = true
-			this._textureCoordinates = new Float32Array( g.vertexCount * 2 );
-
-            this._triangleIndicesChanged = true
-			this._triangleIndices = XRMesh.arrayMax(g.triangleIndices) > 65535 ? new Uint32Array( g.triangleCount * 3) :  new Uint32Array( g.triangleCount * 3)
+            if (g.textureCoordinates) {
+                this._textureCoordinatesChanged = true
+                this._textureCoordinates = new Float32Array( g.vertexCount * 2 );
+            }    
         } else {
-            this._triangleIndicesChanged = g.triangleIndicies && !XRMesh.arrayEquals(this._triangleIndices, g.triangleIndices)
-
             if (this._useGeomArrays) {
-                this._vertexPositionsChanged = !XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
-                this._textureCoordinatesChanged = g.textureCoordinates && !XRMesh.arrayFuzzyEquals(this._textureCoordinates, g.textureCoordinates)
+                this._vertexPositionsChanged = (typeof g.vertices != 'undefined') && !XRMesh.arrayFuzzyEquals(this._vertexPositions, g.vertices)
+                this._textureCoordinatesChanged = (typeof g.textureCoordinates != 'undefined') && !XRMesh.arrayFuzzyEquals(this._textureCoordinates, g.textureCoordinates)
             } else {
                 this._vertexPositionsChanged = false
-                currentVertexIndex = 0
-                for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
-                    if (Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].x) > glMatrix.EPSILON ||
-                        Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].y) > glMatrix.EPSILON ||
-                        Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].z) > glMatrix.EPSILON) 
-                    {
-                        this._vertexPositionsChanged = true
-                        break;
+                if (g.vertices) {
+                    currentVertexIndex = 0
+                    for ( var i = 0, l = g.vertexCount; i < l; i++ ) {
+                        if (Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].x) > glMatrix.EPSILON ||
+                            Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].y) > glMatrix.EPSILON ||
+                            Math.abs(this._vertexPositions[currentVertexIndex++] - g.vertices[i].z) > glMatrix.EPSILON) 
+                        {
+                            this._vertexPositionsChanged = true
+                            break;
+                        }
                     }
                 }
                 this._textureCoordinatesChanged = false
@@ -155,6 +163,17 @@ export default class XRMesh extends XRAnchor {
                     }
                 }
             }
+        }
+
+        if (g.triangleCount) {
+            if(this._triangleIndices.length != g.triangleCount * 3) {
+                this._triangleIndicesChanged = true
+                this._triangleIndices = XRMesh.arrayMax(g.triangleIndices) > 65535 ? new Uint32Array( g.triangleCount * 3) :  new Uint32Array( g.triangleCount * 3)
+            } else {
+                this._triangleIndicesChanged = g.triangleIndicies && !XRMesh.arrayEquals(this._triangleIndices, g.triangleIndices)
+            }
+        } else {
+            this._triangleIndicesChanged = false
         }
 
         if (this._vertexPositionsChanged) {
