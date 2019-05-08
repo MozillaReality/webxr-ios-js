@@ -1,5 +1,5 @@
-import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
-import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
+import * as mat4 from './libs/gl-matrix/mat4.js'
+import * as vec3 from './libs/gl-matrix/vec3.js'
 
 const _workingMatrix1 = mat4.create()
 const _workingMatrix2 = mat4.create()
