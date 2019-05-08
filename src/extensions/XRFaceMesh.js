@@ -36,10 +36,9 @@ export default class XRFaceMesh extends XRMesh {
         
         // updates to the face mesh only have "vertices" set in geometry.  
         // add vertexCount back
-        geometry.vertexCount = geometry.vertices.length
-        geometry.textureCoordinateCount = geometry.vertexCount
-        geometry.triangleCount = this._triangleIndices.length / 3
-
+        if (typeof geometry.vertexCount === 'undefined') {
+            geometry.vertexCount = geometry.vertices.length / (XRMesh.useGeomArrays() ? 3 : 1)
+        }
         this._updateGeometry(geometry)
         this._updateBlendShapes(blendShapeArray)
 	}
