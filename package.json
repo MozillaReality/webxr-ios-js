@@ -6,6 +6,7 @@
   "directories": {},
   "scripts": {
     "build": "cross-env NODE_ENV=production rollup -c rollup.config.js",
+    "minify": "cross-env NODE_ENV=production rollup -c rollup-minify.config.js",
     "start": "npm run build && http-server ."
   },
   "repository": {
