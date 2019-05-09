@@ -398,6 +398,15 @@ export default class XRGeospatialAnchor extends XRAnchor {
         super.updateModelMatrix(_scratchMat4, currentGeoOriginAnchor.timeStamp)
     }
 
+    // for debugging
+    static getGeoOriginPose() { 
+        if (currentGeoOriginAnchor()) {
+            return currentGeoOriginAnchor().modelMatrix
+        } else {
+            return _identity
+        }
+    }
+
     static getOriginCartesian() {
         return currentGeoOriginCartesian()
     }
