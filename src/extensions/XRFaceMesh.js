@@ -11,7 +11,7 @@ export default class XRFaceMesh extends XRMesh {
         this._blendShapesChanged = true
         this._updateBlendShapes(blendShapeArray)
     }
-
+    
     get changed () { return super.changed || this._blendShapesChanged }
 	clearChanged() {
 		super.clearChanged()

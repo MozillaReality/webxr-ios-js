@@ -195,8 +195,16 @@ function _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters
 	return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters)
 }
 
+function _destroyDetectionImage(uid) {
+	return _arKitWrapper.createDetectionImage(uid)
+}
+
 function _activateDetectionImage(uid) {
 	return  _arKitWrapper.activateDetectionImage(uid)
+}
+
+function _deactivateDetectionImage(uid) {
+	return  _arKitWrapper.deactivateDetectionImage(uid)
 }
 
 function _getWorldMap() {
@@ -257,7 +265,9 @@ function _installExtensions(){
 
 		// use "nonStandard" to signify these are unlikely to be standardized 
 		XRSession.prototype.nonStandard_createDetectionImage = _createDetectionImage
+		XRSession.prototype.nonStandard_destroyDetectionImage = _destroyDetectionImage
 		XRSession.prototype.nonStandard_activateDetectionImage = _activateDetectionImage
+		XRSession.prototype.nonStandard_deactivateDetectionImage = _deactivateDetectionImage
 		XRSession.prototype.nonStandard_setNumberOfTrackedImages = _setNumberOfTrackedImages
 		XRSession.prototype.nonStandard_getWorldMap = _getWorldMap
 		XRSession.prototype.nonStandard_setWorldMap = _setWorldMap

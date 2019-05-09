@@ -49,6 +49,8 @@ export default class XRMesh extends XRAnchor {
             this._updateGeometry(this._geometry)
         }
     }
+    
+    isMesh() { return true }
 
     get changed () { 
         return super.changed || 

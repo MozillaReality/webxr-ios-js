@@ -6916,6 +6916,46 @@
     var ResourceLoader = unwrapExports(ResourceLoader_1);
     var ResourceLoader_2 = ResourceLoader_1.ResourceStore;
 
+    function id(element) {
+        return element.id ? `#${element.id}` : '';
+    }
+    function classes(element) {
+        let classSelector = '';
+        const classList = element.classList;
+        for (const c of classList) {
+            classSelector += '.' + c;
+        }
+        return classSelector;
+    }
+    function nthChild(element) {
+        let childNumber = 0;
+        const childNodes = element.parentNode.childNodes;
+        for (const node of childNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE)
+                ++childNumber;
+            if (node === element)
+                return `:nth-child('${childNumber}')`;
+        }
+    }
+    function attributes(element) {
+        let attributes = '';
+        for (const attr of element.attributes) {
+            attributes += `[${attr.name}="${attr.value}"]`;
+        }
+        return attributes;
+    }
+    function path(el, rootNode = document.documentElement) {
+        const selector = el.tagName.toLowerCase() + id(el) + classes(el) + attributes(el) + nthChild(el);
+        const hasParent = el.parentNode && el.parentNode !== rootNode && el.parentNode.tagName;
+        return hasParent ? path(el.parentNode, rootNode) + ' > ' + selector : selector;
+    }
+    function hash(el) {
+        const cssPath = path(el);
+        const type = el.type;
+        const checked = el.checked;
+        const value = el.value;
+        const textContent = el.textContent;
+    }
     function traverseDOM(node, each, bind, level = 0) {
         level++;
         for (let child = node.firstChild; child; child = child.nextSibling) {
@@ -6927,37 +6967,6 @@
             }
         }
     }
-    function getBounds(element, bounds = { left: 0, top: 0, width: 0, height: 0 }) {
-        if (element instanceof Window) {
-            const { width, height } = getViewportSize();
-            bounds.left = 0;
-            bounds.top = 0;
-            bounds.width = width;
-            bounds.height = height;
-            return bounds;
-        }
-        const window = element.ownerDocument.defaultView;
-        let el = element;
-        let left = el.offsetLeft;
-        let top = el.offsetTop;
-        let offsetParent = el.offsetParent;
-        while (el && el.nodeType !== Node.DOCUMENT_NODE) {
-            left -= el.scrollLeft;
-            top -= el.scrollTop;
-            if (el === offsetParent) {
-                const style = window.getComputedStyle(el);
-                left += el.offsetLeft + parseFloat(style.borderLeftWidth) || 0;
-                top += el.offsetTop + parseFloat(style.borderTopWidth) || 0;
-                offsetParent = el.offsetParent;
-            }
-            el = el.offsetParent;
-        }
-        bounds.left = left;
-        bounds.top = top;
-        bounds.width = element.offsetWidth;
-        bounds.height = element.offsetHeight;
-        return bounds;
-    }
     function addCSSRule(sheet, selector, rules, index) {
         if ('insertRule' in sheet) {
             sheet.insertRule(selector + '{' + rules + '}', index);
@@ -6966,25 +6975,114 @@
             sheet.addRule(selector, rules, index);
         }
     }
+    function getBounds(element, bounds = { left: 0, top: 0, width: 0, height: 0 }) {
+        const doc = element.ownerDocument;
+        const defaultView = element.ownerDocument.defaultView;
+        const docEl = doc.documentElement;
+        const body = doc.body;
+        if (element === docEl) {
+            return getDocumentBounds(doc, bounds);
+        }
+        let el = element;
+        let computedStyle;
+        let offsetParent = el.offsetParent;
+        let prevComputedStyle = defaultView.getComputedStyle(el, null);
+        let top = el.offsetTop;
+        let left = el.offsetLeft;
+        while ((el = el.parentNode) && el !== body && el !== docEl) {
+            if (prevComputedStyle.position === 'fixed') {
+                break;
+            }
+            computedStyle = defaultView.getComputedStyle(el, null);
+            top -= el.scrollTop;
+            left -= el.scrollLeft;
+            if (el === offsetParent) {
+                top += el.offsetTop;
+                left += el.offsetLeft;
+                top += parseFloat(computedStyle.borderTopWidth) || 0;
+                left += parseFloat(computedStyle.borderLeftWidth) || 0;
+                offsetParent = el.offsetParent;
+            }
+            prevComputedStyle = computedStyle;
+        }
+        // if (prevComputedStyle.position === 'relative' || prevComputedStyle.position === 'static') {
+        //   getDocumentBounds(doc, bounds)
+        //   top += bounds.top
+        //   left += bounds.left
+        // }
+        if (prevComputedStyle.position === 'fixed') {
+            top += Math.max(docEl.scrollTop, body.scrollTop);
+            left += Math.max(docEl.scrollLeft, body.scrollLeft);
+        }
+        // let el = element
+        // let left = el.offsetLeft
+        // let top = el.offsetTop
+        // let offsetParent = el.offsetParent
+        // while (el && el.nodeType !== Node.DOCUMENT_NODE) {
+        //   left -= el.scrollLeft
+        //   top -= el.scrollTop
+        //   if (el === offsetParent) {
+        //     const style = window.getComputedStyle(el)
+        //     left += el.offsetLeft + parseFloat(style.borderLeftWidth!) || 0
+        //     top += el.offsetTop + parseFloat(style.borderTopWidth!) || 0
+        //     offsetParent = el.offsetParent
+        //   }
+        //   el = el.offsetParent as any
+        // }
+        bounds.left = left;
+        bounds.top = top;
+        bounds.width = element.offsetWidth;
+        bounds.height = element.offsetHeight;
+        return bounds;
+    }
     /*
      * On some mobile browsers, the value reported by window.innerHeight
      * is not the true viewport height. This method returns
      * the actual viewport.
      */
-    function getViewportSize() {
-        viewportSize.width = viewport.offsetWidth;
-        viewportSize.height = viewport.offsetHeight;
-        return viewportSize;
+    function getViewportBounds(bounds) {
+        if (!viewportTester.parentNode)
+            document.documentElement.append(viewportTester);
+        bounds.left = pageXOffset;
+        bounds.top = pageYOffset;
+        bounds.width = viewportTester.offsetWidth;
+        bounds.height = viewportTester.offsetHeight;
+        return bounds;
     }
-    const viewport = document.createElement('div');
-    viewport.id = 'VIEWPORT';
-    viewport.style.position = 'fixed';
-    viewport.style.width = '100vw';
-    viewport.style.height = '100vh';
-    viewport.style.visibility = 'hidden';
-    viewport.style.pointerEvents = 'none';
-    document.documentElement.append(viewport);
-    const viewportSize = { width: 0, height: 0 };
+    const viewportTester = document.createElement('div');
+    viewportTester.id = 'VIEWPORT';
+    viewportTester.style.position = 'fixed';
+    viewportTester.style.width = '100vw';
+    viewportTester.style.height = '100vh';
+    viewportTester.style.visibility = 'hidden';
+    viewportTester.style.pointerEvents = 'none';
+    function getDocumentBounds(document, bounds) {
+        const documentElement = document.documentElement;
+        const body = document.body;
+        const documentElementStyle = getComputedStyle(documentElement);
+        const bodyStyle = getComputedStyle(body);
+        bounds.top =
+            body.offsetTop + parseFloat(documentElementStyle.marginTop) ||
+                0 + parseFloat(bodyStyle.marginTop) ||
+                0;
+        bounds.left =
+            body.offsetLeft + parseFloat(documentElementStyle.marginLeft) ||
+                0 + parseFloat(bodyStyle.marginLeft) ||
+                0;
+        bounds.width = Math.max(Math.max(body.scrollWidth, documentElement.scrollWidth), Math.max(body.offsetWidth, documentElement.offsetWidth), Math.max(body.clientWidth, documentElement.clientWidth));
+        bounds.height = Math.max(Math.max(body.scrollHeight, documentElement.scrollHeight), Math.max(body.offsetHeight, documentElement.offsetHeight), Math.max(body.clientHeight, documentElement.clientHeight));
+        return bounds;
+    }
+
+    var domUtils = /*#__PURE__*/Object.freeze({
+        path: path,
+        hash: hash,
+        traverseDOM: traverseDOM,
+        addCSSRule: addCSSRule,
+        getBounds: getBounds,
+        getViewportBounds: getViewportBounds,
+        getDocumentBounds: getDocumentBounds
+    });
 
     const scratchVector = new THREE.Vector3();
     const scratchVector2 = new THREE.Vector3();
@@ -7334,13 +7432,15 @@
             return (state[this.hover] || state[0]).bounds;
         }
         get normalizedBounds() {
-            const { width, height } = getViewportSize();
+            const viewportBounds = getViewportBounds(this._normalizedBounds);
+            const viewportWidth = viewportBounds.width;
+            const viewportHeight = viewportBounds.height;
             const bounds = this.bounds;
             const normalizedBounds = this._normalizedBounds;
-            normalizedBounds.left = bounds.left / width;
-            normalizedBounds.top = bounds.top / height;
-            normalizedBounds.width = bounds.width / width;
-            normalizedBounds.height = bounds.height / height;
+            normalizedBounds.left = bounds.left / viewportWidth;
+            normalizedBounds.top = bounds.top / viewportHeight;
+            normalizedBounds.width = bounds.width / viewportWidth;
+            normalizedBounds.height = bounds.height / viewportHeight;
             return normalizedBounds;
         }
         /**
@@ -7564,7 +7664,7 @@
             const pixelSize = WebLayer3D.PIXEL_SIZE;
             const parentBoundingRect = this.parent instanceof WebLayer3D
                 ? this.parent.bounds
-                : getBounds(window, scratchBounds);
+                : getViewportBounds(scratchBounds);
             const left = boundingRect.left - parentBoundingRect.left;
             const top = boundingRect.top - parentBoundingRect.top;
             const parentOriginX = pixelSize * (-parentBoundingRect.width / 2);
@@ -7711,8 +7811,8 @@
                             imageStore,
                             logger: this.rootLayer._logger,
                             scale: this._pixelRatio,
-                            x: bounds.left + window.pageXOffset,
-                            y: bounds.top + window.pageYOffset,
+                            x: bounds.left,
+                            y: bounds.top,
                             width: bounds.width,
                             height: bounds.height,
                             allowTaint: this.options.allowTaint || false
@@ -7740,6 +7840,7 @@
                 render();
         }
     }
+    WebLayer3D.domUtils = domUtils;
     WebLayer3D.DEBUG_PERFORMANCE = false;
     WebLayer3D.LAYER_ATTRIBUTE = 'data-layer';
     WebLayer3D.LAYER_CONTAINER_ATTRIBUTE = 'data-layer-container';
