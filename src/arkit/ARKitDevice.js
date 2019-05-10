@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 
 import PolyfilledXRDevice from 'webxr-polyfill/src/devices/PolyfilledXRDevice'
@@ -8,24 +15,6 @@ import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
 import XRGeospatialAnchor from '../extensions/XRGeospatialAnchor.js';
 
-
-window.addEventListener('DOMContentLoaded', () => {
-	setTimeout(() => {
-		try {
-			var styleEl = document.createElement('style');
-			// Append <style> element to <head>
-			document.head.appendChild(styleEl);
-			// Grab style element's sheet
-			var styleSheet = styleEl.sheet;
-			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
-			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
-			styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
-
-		} catch(e) {
-			console.error('page error', e)
-		}
-	}, 1)
-})
 
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
@@ -64,6 +53,23 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 	}
 
+	static initStyles() {
+		window.addEventListener('DOMContentLoaded', () => {
+		  setTimeout(() => {
+			try {
+			  var styleEl = document.createElement('style');
+			  document.head.appendChild(styleEl);
+			  var styleSheet = styleEl.sheet;
+			  styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
+			  styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			  styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
+			} catch(e) {
+			  console.error('page error', e);
+			}
+		  }, 1);
+		});    
+	  }
+		
 	get depthNear(){ return this._depthNear }
 	set depthNear(val){ this._depthNear = val }
 
