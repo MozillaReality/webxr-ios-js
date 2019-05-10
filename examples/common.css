@@ -37,20 +37,14 @@ body {
     pointer-events: none;
 }
 
-#common-message {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 20px;
-}
+
 button {
     font-size: 16px;
 }
 
 #go-button { margin: 20px; }
 
-#text-box {
+.text-box {
     position: absolute;
     top: 5%;
     left: 50%;
@@ -61,4 +55,12 @@ button {
     padding: 5px 10px;
     margin: 0px 0 0 -50px;
     font-size: 0.8em;
+}
+
+.common-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
 }

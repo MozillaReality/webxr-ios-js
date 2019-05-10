@@ -1,4 +1,7 @@
 <html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
 	<head>
 		<title>Geospatial AR example</title>
 		<meta charset="utf-8">
@@ -35,6 +38,7 @@
 
 			let textBox = document.createElement('span')
 			textBox.setAttribute('id', 'text-box')
+			textBox.setAttribute('class', 'text-box')
 			//textBox.style.visibility = 'hidden'
 			textBox.innerText = 'Waiting to start ...'
 			document.body.appendChild(textBox)
@@ -62,7 +66,7 @@
 			}
 
 			var descLayer = new WebLayer3D(document.getElementById('description'), layerOptions)
-			var textLayer = new WebLayer3D(document.getElementById('text-box'), layerOptions)
+			var textLayer = new WebLayer3D(textBox, layerOptions)
 
 			var clock = new THREE.Clock()
 			var hudNode = new THREE.Group()

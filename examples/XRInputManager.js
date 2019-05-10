@@ -1,3 +1,6 @@
+// Any copyright is dedicated to the Public Domain.
+// http://creativecommons.org/publicdomain/zero/1.0/
+
 import * as mat4 from './libs/gl-matrix/mat4.js'
 import * as vec3 from './libs/gl-matrix/vec3.js'
 

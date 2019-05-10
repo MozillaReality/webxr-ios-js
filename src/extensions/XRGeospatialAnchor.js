@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 import * as mat3 from 'gl-matrix/src/gl-matrix/mat3'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
@@ -382,7 +389,7 @@ export default class XRGeospatialAnchor extends XRAnchor {
         // local cartesian around the geolocation anchor.
         if (_overrideGeoOrientation) {
             mat3.fromMat4(_scratchMat3, _overrideOrientationAnchor.modelMatrix)
-            vec3.transformMat3(_this._localCartesian, this._localCartesian, _scratchMat3)
+            vec3.transformMat3(this._localCartesian, this._localCartesian, _scratchMat3)
         }
         this._updateLocalMatrix()
     }
@@ -441,6 +448,12 @@ export default class XRGeospatialAnchor extends XRAnchor {
         // identify orientation, we'll use this ... somehow
         _overrideGeoOrientation = true
         _overrideOrientationAnchor = anchor
+
+        if (_overrideGeolocation) {
+            updateGeoCartesian(_overrideCartesian, _overrideLocationAnchor)
+        } else if (_geoOrigin) {
+            updateGeoCartesian(_geoCartesian, _geoOriginAnchor)
+        }
     }
 
     static overrideGeoLocation (cartesian, anchor) {

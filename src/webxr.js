@@ -1,3 +1,11 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
+
 import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill'
 import {PRIVATE} from 'webxr-polyfill/src/api/XRFrameOfReference'
 
@@ -52,8 +60,6 @@ function _getTransformTo(sourceMatrix, destinationMatrix, out){
 	//mat4.multiply(out, _workingMatrix, out)
 	return mat4.multiply(out, sourceMatrix, _workingMatrix)
 }
-
-const _arKitWrapper = ARKitWrapper.GetOrCreate()
 
 function _updateWorldSensingState (options) {
 	return _arKitWrapper.updateWorldSensingState(options)
@@ -250,8 +256,15 @@ function _convertRayToARKitScreenCoordinates(ray, projectionMatrix){
 	return [x, y]
 }
 
+var _arKitWrapper = null
+
 function _installExtensions(){
 	if(!navigator.xr) return
+
+	// install our ARKitWrapper
+	_arKitWrapper = ARKitWrapper.GetOrCreate()
+
+	ARKitDevice.initStyles()
 
 	if(window.XRSession){
 		XRSession.prototype.requestHitTest = _xrSessionRequestHitTest
@@ -293,5 +306,6 @@ function _installExtensions(){
 
 }
 
-_installExtensions()
-
+if (xrPolyfill.injected) {
+	_installExtensions()
+}

@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import EventTarget from 'webxr-polyfill/src/lib/EventTarget';
 import XRAnchor from '../extensions/XRAnchor';
 import XRAnchorOffset from '../extensions/XRAnchorOffset';
@@ -6,9 +13,7 @@ import XRImageAnchor from '../extensions/XRImageAnchor'
 import XRFaceMesh from '../extensions/XRFaceMesh'
 import XRVideoFrame from '../extensions/XRVideoFrame'
 import XRLightEstimate from '../extensions/XRLightEstimate'
-
 import base64 from "../lib/base64-binary.js";
-
 import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
 import XRMesh from '../extensions/XRMesh';
 
@@ -219,7 +224,6 @@ export default class ARKitWrapper extends EventTarget {
 
 			options.geometry_arrays = true		// get the geomtry in flattened arrays
 			XRMesh.setUseGeomArrays()
-
 			
 			ARKitWrapper.GLOBAL_INSTANCE._sendInit(options)
 		} 
