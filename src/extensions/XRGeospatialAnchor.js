@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 import * as mat3 from 'gl-matrix/src/gl-matrix/mat3'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
@@ -44,9 +51,10 @@ async function useSession(session) {
             requestVertexNormals : true
         })
     }
-    if (!_scratchCartesian) {
-        _scratchCartesian = new Cesium.Cartesian3()
-    }
+    // Cesium.Cartesian methods will create and we can store the result here
+    // if (!_scratchCartesian) {
+    //     _scratchCartesian = new Cesium.Cartesian3()
+    // }
     
     try {
         let _headLevelFrameOfReference = await session.requestFrameOfReference('head-model')
@@ -137,9 +145,11 @@ function resetState() {
 /***
  * get altitude for LL's with no A
  */
+var _altScratchCart = null
 async function getAltitude(cart) {
-    await updateHeightFromTerrain(cart)
-    return cart.height
+    _altScratchCart = Cesium.Cartographic.clone(cart, _altScratchCart)
+    await updateHeightFromTerrain(_altScratchCart)
+    return _altScratchCart.height
 
 //     let elevation = 0
 //     try {
@@ -234,21 +244,68 @@ function updateECEFToLocal(cartesian) {
     }
  }
 
+var _useEstimatedElevationForViewer = false
+var _savedViewHeight = 0
+async function _useEstimatedElevation(setting) {
+    let sleep = function (time) {
+        return new Promise((resolve) => setTimeout(resolve, time));
+    }
+
+    if (_useEstimatedElevationForViewer != setting) {
+        _useEstimatedElevationForViewer = setting
+
+        // if we have a geoOrigin, update it.  Otherwise, the right thing will happen
+        if (_geoOrigin) {
+            if (_useEstimatedElevationForViewer) {
+                _geoOrigin.coords.altitude = _saveViewHeight
+            }
+            while (_updateOrigin) {
+                await sleep(1)
+
+                await updatePositionCallback(_geoOrigin, true)
+            }
+        }
+    }
+}
+
 var _updatingOrigin = false
-async function updatePositionCallback (position)
+var _scratchCartographic = null
+async function updatePositionCallback (position, force=false)
 {
     if (!_updatingOrigin && 
-        (!_geoOrigin || 
+        (!_geoOrigin || force || 
             _geoOrigin.coords.accuracy > position.coords.accuracy || 
             (_geoOrigin.coords.accuracy == position.coords.accuracy && 
                 _geoOrigin.coords.altitudeAccuracy > position.coords.altitudeAccuracy))) {
         // better geolocation!  create new anchor, re-do the alignment, notify all anchors of the change
         _updatingOrigin = true
 
+        // lets make a deep copy so we can change it
+        position = {
+            timestamp: position.timestamp,
+            coords: {
+                altitude: position.coords.altitude,
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                altitudeAccuracy: position.coords.altitudeAccuracy,
+                heading: position.coords.heading,
+                speed: position.coords.speed
+            }
+        }
+
         try {
+            if (_useEstimatedElevationForViewer) {
+                _savedViewHeight = position.coords.altitude
+                _scratchCartographic = Cesium.Cartographic.fromDegrees(position.coords.longitude, position.coords.latitude, position.coords.altitude)
+                await updateHeightFromTerrain(_scratchCartographic)
+                position.coords.altitude = _scratchCartographic.height
+            }
+
             // get a new Anchor right where the device is right now
             let _headLevelFrameOfReference = await _XRsession.requestFrameOfReference('head-model')
             let newAnchor = await _XRsession.addAnchor(_identity, _headLevelFrameOfReference)
+
             newAnchor._isInternalGeoAnchor = true
             if (!_overrideGeolocation && _geoOriginAnchor) {
                 sendNewGeoAnchorEvent (_geoOriginAnchor, newAnchor)
@@ -332,7 +389,7 @@ export default class XRGeospatialAnchor extends XRAnchor {
         // local cartesian around the geolocation anchor.
         if (_overrideGeoOrientation) {
             mat3.fromMat4(_scratchMat3, _overrideOrientationAnchor.modelMatrix)
-            vec3.transformMat3(_this._localCartesian, this._localCartesian, _scratchMat3)
+            vec3.transformMat3(this._localCartesian, this._localCartesian, _scratchMat3)
         }
         this._updateLocalMatrix()
     }
@@ -346,6 +403,15 @@ export default class XRGeospatialAnchor extends XRAnchor {
         // this location from the geoAnchor.  We use just the position because these are points, and both of these
         // assume the base coordinate system is aligned with EUS
         super.updateModelMatrix(_scratchMat4, currentGeoOriginAnchor.timeStamp)
+    }
+
+    // for debugging
+    static getGeoOriginPose() { 
+        if (currentGeoOriginAnchor()) {
+            return currentGeoOriginAnchor().modelMatrix
+        } else {
+            return _identity
+        }
     }
 
     static getOriginCartesian() {
@@ -371,6 +437,10 @@ export default class XRGeospatialAnchor extends XRAnchor {
         })
     }
 
+    static useEstimatedElevation(setting) {
+        _useEstimatedElevation(setting)
+    }
+
     // we can override the geo location, orientation, or both
     static overrideGeoOrientation(anchor){
         // idea here is that the orientation of this anchor wil be used as EUS
@@ -378,6 +448,12 @@ export default class XRGeospatialAnchor extends XRAnchor {
         // identify orientation, we'll use this ... somehow
         _overrideGeoOrientation = true
         _overrideOrientationAnchor = anchor
+
+        if (_overrideGeolocation) {
+            updateGeoCartesian(_overrideCartesian, _overrideLocationAnchor)
+        } else if (_geoOrigin) {
+            updateGeoCartesian(_geoCartesian, _geoOriginAnchor)
+        }
     }
 
     static overrideGeoLocation (cartesian, anchor) {
@@ -467,8 +543,8 @@ export default class XRGeospatialAnchor extends XRAnchor {
                     vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
                     vec3.transformMat4(_scratchVec3, _scratchVec3, _localToFixed)
 
-                    let cartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
-                    resolve(Cesium.Cartographic.fromCartesian(cartesian))
+                    _scratchCartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
+                    resolve(Cesium.Cartographic.fromCartesian(_scratchCartesian))
                 })
             })
         })
