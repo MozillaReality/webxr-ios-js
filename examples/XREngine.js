@@ -65,7 +65,7 @@ export default class XREngine {
     }
   
 	preRender(viewport, projectionMatrix, viewMatrix){
-		this.setUpCamera(viewMatrix)
+		this.setupCamera(viewMatrix)
 		this._camera.projectionMatrix.fromArray(projectionMatrix)
 		if (this._logarithmicDepth) {
 			this._camera.projectionMatrix.elements[10] = PERPS_10
