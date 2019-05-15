@@ -1,46 +1,81 @@
+// Any copyright is dedicated to the Public Domain.
+// http://creativecommons.org/publicdomain/zero/1.0/
+
 
 const PI_OVER_180 = Math.PI / 180
+
+// the furthese pluto gets from the sun is 7,375,930,000, so let's double that as our "very far value"
+const FAR = 15000000000000
+// really can't imagine needing to be closer than 1mm
+var NEAR = 0.001
+
+// values for the perspective matrix
+var PERPS_10 = - ( FAR + NEAR ) / ( FAR - NEAR );
+var PERSP_14 = - 2 * FAR * NEAR / ( FAR - NEAR );
 
 /*
 A wrapper around the Three renderer and related classes, useful for quick testing.
 */
 export default class XREngine {
-	constructor(glCanvas, glContext){
+	constructor(glCanvas, glContext, logarithmicDepth = false){
 		this._glCanvas = glCanvas
 		this._glContext = glContext
-
+		this._logarithmicDepth = logarithmicDepth
+		
 		const aspectRatio = document.documentElement.offsetWidth / document.documentElement.offsetHeight
 
 		// Dynamically calculate the FOV
-		this._camera = new THREE.PerspectiveCamera(70, aspectRatio, 0.1, 1000)
+		this._camera = new THREE.PerspectiveCamera(70, aspectRatio, 
+			// setting these doesn't really matter, since the perspective matrix gets overritten in
+			// the render loop
+			logarithmicDepth? NEAR : 0.05, 
+			logarithmicDepth? FAR : 1000)
 		this._camera.matrixAutoUpdate = false
 		this._scene = new THREE.Scene()
+		this._root = new THREE.Group()
+		this._scene.add(this._root)
 		this._scene.add(this._camera)
 		this._renderer = new THREE.WebGLRenderer({
 			canvas: this._glCanvas,
 			context: this._glContext,
 			antialias: false,
+			logarithmicDepthBuffer: logarithmicDepth,
 			alpha: false
 		})
+		if (logarithmicDepth && !this._renderer.capabilities.logarithmicDepthBuffer) {
+			this._logarithmicDepth = false
 
+			console.warn("couldn't create a logarithmic depth buffer in the XREngine: not supported by the renderer")
+		}
 		// an array of info that we'll use in _handleFrame to update the nodes using anchors
 		this._anchoredNodes = new Map() // { XRAnchorOffset, Three.js Object3D }
 
 		this._renderer.autoClear = false
-		this._renderer.setPixelRatio(1)
+		this._renderer.setPixelRatio(window.devicePixelRatio)
 	}
 
 	startFrame(){
 		this._renderer.clear()
 	}
 
-	render(viewport, projectionMatrix, viewMatrix){
+	setupCamera(viewMatrix) {
 		this._camera.matrix.fromArray(viewMatrix)
+		this._camera.matrixWorldNeedsUpdate = true
 		this._camera.updateMatrixWorld()
+    }
+  
+	preRender(viewport, projectionMatrix, viewMatrix){
+		this.setupCamera(viewMatrix)
 		this._camera.projectionMatrix.fromArray(projectionMatrix)
+		if (this._logarithmicDepth) {
+			this._camera.projectionMatrix.elements[10] = PERPS_10
+			this._camera.projectionMatrix.elements[14] = PERSP_14
+		}
 
-		this.renderer.setSize(this._glCanvas.width, this._glCanvas.height, false)
+		this._renderer.setSize(this._glCanvas.offsetWidth, this._glCanvas.offsetHeight, false)
 		this._renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
+	}
+	render() {
 		this._renderer.clearDepth()
 		this._renderer.render(this._scene, this._camera)
 	}
@@ -48,6 +83,7 @@ export default class XREngine {
 	endFrame(){}
 
 	get scene(){ return this._scene }
+	get root(){ return this._root }
 	get camera() { return this._camera }
 	get renderer() { return this._renderer }
 
@@ -58,14 +94,14 @@ export default class XREngine {
 	addDirectionalLight(color=0xffffff, intensity=0.7, position=[0, 10, 20]){
 		const light = new THREE.DirectionalLight(color, intensity)
 		light.position.set(...position)
-		this._scene.add(light)
-		this._scene.add(light.target)
+		this._root.add(light)
+		this._root.add(light.target)
 		return light
 	}
 
-	addAmbientLight(color=0xffffff, intensity=0.2){
+	addAmbientLight(color=0xffffff, intensity=0.3){
 		const light = new THREE.AmbientLight(color, intensity)
-		this._scene.add(light)
+		this._root.add(light)
 		return light
 	}
 
@@ -75,7 +111,7 @@ export default class XREngine {
 			new THREE.MeshLambertMaterial({ color: color })
 		)
 		sphere.position.set(...position)
-		this._scene.add(sphere)
+		this._root.add(sphere)
 		return sphere
 	}
 
@@ -86,7 +122,7 @@ export default class XREngine {
 			side: THREE.DoubleSide })
 		const mesh = new THREE.Mesh(geometry, material)
 		mesh.position.set(...position)
-		this._scene.add(mesh)
+		this._root.add(mesh)
 		return mesh
 	}
 
@@ -96,14 +132,14 @@ export default class XREngine {
 			new THREE.MeshLambertMaterial({ color: color })
 		)
 		box.position.set(...position)
-		this._scene.add(box)
+		this._root.add(box)
 		return box
 	}
 	
 	addAxesHelper( position=[0,0,0], size=[1,1,1] ) {
 		let helper = this.createAxesHelper(size)
 		helper.position.set(...position)
-		this._scene.add(helper)
+		this._root.add(helper)
 		return helper;
 	}
 
@@ -150,7 +186,7 @@ export default class XREngine {
 		this._scene.add(node)
 
 		anchor.addEventListener("update", this._handleAnchorUpdate.bind(this))
-		anchor.addEventListener("removed", this._handleAnchorDelete.bind(this))
+		anchor.addEventListener("remove", this._handleAnchorDelete.bind(this))
 	
 		return node
 	}
@@ -189,11 +225,15 @@ export default class XREngine {
 	/* 
 	Remove a node from the scene
 	*/
-	removeAnchoredNode(anchor) {
-		const anchoredNode = this._anchoredNodes.get(anchor.uid)
+	removeAnchoredNode(node) {
+		if (!node.anchor) {
+			console.error("trying to remove unanchored node with removeAnchoredNode")
+			return;
+		}
+		const anchoredNode = this._anchoredNodes.get(node.anchor.uid)
 		if (anchoredNode) {
 			this.anchoredNodeRemoved(anchoredNode.node);
-			this._anchoredNodes.delete(anchor.uid);
+			this._anchoredNodes.delete(node.anchor.uid);
 			this._scene.remove(anchoredNode.node)
 			return;
 		}
@@ -201,16 +241,16 @@ export default class XREngine {
 	
 	fillInGLTFScene(path, position=[0, 0, -2], scale=[1, 1, 1]){
 		let ambientLight = new THREE.AmbientLight('#FFF', 1)
-		this._scene.add(ambientLight)
+		this._root.add(ambientLight)
 	
 		let directionalLight = new THREE.DirectionalLight('#FFF', 0.6)
-		this._scene.add(directionalLight)
+		this._root.add(directionalLight)
 	
 		this.loadGLTF(path).then(gltf => {
 			gltf.scene.scale.set(...scale)
 			gltf.scene.position.set(...position)
 			//gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / -2)
-			this._scene.add(gltf.scene)
+			this._root.add(gltf.scene)
 		}).catch((...params) =>{
 			console.error('could not load gltf', ...params)
 		})

@@ -1,24 +1,27 @@
 
   <html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
 	<head>
 		<title>Spinners example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" href="../common.css"/>
-		<script src="../libs/three.min.js"></script>
-		<script src="../libs/loaders/BinaryLoader.js"></script>
+		<script src="../libs/three-r86/three.min.js"></script>
+		<script src="../libs/three-r86/loaders/BinaryLoader.js"></script>
 
-		<script src="../libs/postprocessing/EffectComposer.js"></script>
+		<script src="../libs/three-r86/postprocessing/EffectComposer.js"></script>
 
-		<script src="../libs/shaders/ConvolutionShader.js"></script>
-		<script src="../libs/postprocessing/ShaderPass.js"></script>
-		<script src="../libs/postprocessing/MaskPass.js"></script>
-		<script src="../libs/shaders/CopyShader.js"></script>
-		<script src="../libs/shaders/FilmShader.js"></script>
+		<script src="../libs/three-r86/shaders/ConvolutionShader.js"></script>
+		<script src="../libs/three-r86/postprocessing/ShaderPass.js"></script>
+		<script src="../libs/three-r86/postprocessing/MaskPass.js"></script>
+		<script src="../libs/three-r86/shaders/CopyShader.js"></script>
+		<script src="../libs/three-r86/shaders/FilmShader.js"></script>
 
-		<script src="../libs/postprocessing/RenderPass.js"></script>
-		<script src="../libs/postprocessing/BloomPass.js"></script>
-		<script src="../libs/postprocessing/FilmPass.js"></script>
+		<script src="../libs/three-r86/postprocessing/RenderPass.js"></script>
+		<script src="../libs/three-r86/postprocessing/BloomPass.js"></script>
+		<script src="../libs/three-r86/postprocessing/FilmPass.js"></script>
 
 		<script module src="../../dist/webxr.js"></script>
 	</head>
@@ -43,18 +46,13 @@
 
 			let device = null
 			let session = null
-			let headFrameOfReference = null
 			let eyeLevelFrameOfReference = null
-			let layer = null
-			let frameOfReference = null
 			let engine = null
 			var canvas = null
 
 			// temporary working variables
-			const workingMatrix1 = mat4.create()
-			const workingMatrix2 = mat4.create()
-			const identity = mat4.identity(mat4.create())
-			const upY = vec3.fromValues(0,1,0)
+			const workingMatrix = mat4.create()
+			const workingVec3 = vec3.create()
 
 			var clock = new THREE.Clock()
 			var meshes = []
@@ -84,15 +82,14 @@
 				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 
 				const loader = new THREE.BinaryLoader()
-				loader.load('../models/female02/Female02_bin.js', geometry => {
+				loader.load('./female02/Female02_bin.js', geometry => {
 					femaleGeometry = geometry
 					geometries.push(femaleGeometry)
 				})
-				loader.load('../models/male02/Male02_bin.js', geometry => {
+				loader.load('./male02/Male02_bin.js', geometry => {
 					maleGeometry = geometry
 					geometries.push(maleGeometry)
 				})
-
 
 				composer = new THREE.EffectComposer(engine.renderer)
 				composer.addPass(new THREE.RenderPass(engine.scene, engine.camera))
@@ -100,7 +97,6 @@
 				let filmPass = new THREE.FilmPass(0.5, 0.5, 1448, false)
 				filmPass.renderToScreen = true
 				composer.addPass(filmPass)
-		
 			}
 
 			////////////////////////////////
@@ -123,7 +119,7 @@
 					engine.camera.updateMatrixWorld()
 					engine.camera.projectionMatrix.fromArray(view.projectionMatrix)
 
-					engine.renderer.setSize(canvas.width, canvas.height, false)
+					engine.renderer.setSize(canvas.offsetWidth, canvas.offsetHeight, false)
 					let viewport = session.baseLayer.getViewport(view)
 					engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
 
@@ -136,13 +132,17 @@
 			// hit testing
 			function handleHitResults(hits) {
 				let size = 0.05;
-				let hit = hits[0]
+				if (hits.length > 0) {
+					let hit = hits[0]
 
-				session.addAnchor(hit, headFrameOfReference).then(anchor => {					
-					engine.addAnchoredNode(anchor, createSceneGraphNode())
-				}).catch(err => {
-					console.error('Error adding anchor', err)
-				})
+					session.requestFrameOfReference('head-model').then(headFrameOfReference => {
+						session.addAnchor(hit, headFrameOfReference).then(anchor => {					
+							engine.addAnchoredNode(anchor, createSceneGraphNode())
+						}).catch(err => {
+							console.error('Error adding anchor', err)
+						})
+					})
+				}
 			}
 
 			//////////////////////////////
@@ -153,7 +153,7 @@
 					geometries[Math.floor(geometries.length * Math.random())], 
 					0.006,
 					0,0,0, 
-					0.025, 
+					0.005, 
 					colors[Math.floor(colors.length * Math.random())],
 					true
 				))
@@ -342,15 +342,14 @@
 					console.log('No session for hit testing')
 					return Promise.reject()
 				}
-				if(headFrameOfReference === null){
-					console.log('No frame of reference')
-					return Promise.reject()
-				}
 				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
-																							engine.camera.projectionMatrix)
+				const [origin, direction] = 
+					XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
+																 engine.camera.projectionMatrix)
 
-				return session.requestHitTest(origin, direction, headFrameOfReference)
+				return session.requestFrameOfReference('head-model').then(headFrameOfReference => {
+					return session.requestHitTest(origin, direction, headFrameOfReference)
+				})
 			}
 
 
@@ -367,10 +366,12 @@
 							console.error('Session setup error', err)
 						})
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = "none"
 				} else {
 					session.end()
 					handleSessionEnded();
 					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').style.display = "block"
 					document.getElementById('go-button').innerText = "Go"
 				}
 			}
@@ -397,25 +398,30 @@
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, glContext)
 
-				// head-model is the coordinate system that tracks the position of the display
-				session.requestFrameOfReference('head-model').then(frameOfReference =>{
-					headFrameOfReference = frameOfReference
-				})
-				.catch(err => {
-					console.error('Error finding head frame of reference', err)
-				})
-				// eye-level is the coordinate system of the ARKit tracking system 
-				session.requestFrameOfReference('eye-level').then(frameOfReference => {
-					eyeLevelFrameOfReference = frameOfReference
+				createRootNode().then(() => {
 					// Kick off rendering
 					session.requestAnimationFrame(handleAnimationFrame)
-				})
-				.catch(err => {
-					console.error('Error finding eye frame of reference', err)
 				})
 
 				initializeScene()
 			}
+
+			async function createRootNode() {
+				let headFrameOfReference = await session.requestFrameOfReference('head-model')
+				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+				// get the location of the device, and use it to create an 
+				// anchor with the identity orientation
+				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+				mat4.getTranslation(workingVec3, workingMatrix)
+				mat4.fromTranslation(workingMatrix, workingVec3)
+
+				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+				engine.addAnchoredNode(anchor, engine.root)
+				
+				return true
+			}
+
 
 		</script>
 	</body>

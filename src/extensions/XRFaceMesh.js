@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import XRMesh from './XRMesh.js'
 import * as glMatrix from "gl-matrix/src/gl-matrix/common";
 
@@ -11,7 +18,7 @@ export default class XRFaceMesh extends XRMesh {
         this._blendShapesChanged = true
         this._updateBlendShapes(blendShapeArray)
     }
-
+    
     get changed () { return super.changed || this._blendShapesChanged }
 	clearChanged() {
 		super.clearChanged()
@@ -36,10 +43,9 @@ export default class XRFaceMesh extends XRMesh {
         
         // updates to the face mesh only have "vertices" set in geometry.  
         // add vertexCount back
-        geometry.vertexCount = geometry.vertices.length
-        geometry.textureCoordinateCount = geometry.vertexCount
-        geometry.triangleCount = this._triangleIndices.length / 3
-
+        if (typeof geometry.vertexCount === 'undefined') {
+            geometry.vertexCount = geometry.vertices.length / (XRMesh.useGeomArrays() ? 3 : 1)
+        }
         this._updateGeometry(geometry)
         this._updateBlendShapes(blendShapeArray)
 	}

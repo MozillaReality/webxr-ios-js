@@ -1,0 +1,295 @@
+<html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
+    <head>
+	<title>ARKit 1.5 image detection example</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link rel="stylesheet" href="../common.css"/>
+	<script src="../libs/three/three.min.js"></script>
+	<script src="../libs/three/loaders/GLTFLoader.js"></script>
+    <script src="../libs/dat.gui.min.js"></script>
+    <script module src="../../dist/webxr.js"></script>
+    <script src="../libs/stats.js"></script>
+    <script src="../libs/three-web-layer.umd.js"></script>
+</head>
+<body>
+<div id="hubs" style="width: 100px; display: none">
+	<img id="hubs-image" src="hubs.png" >
+</div>
+<div id="description">
+	<h2>ARKit 1.5 Image Detection Example</h2>
+	<h5>(click to dismiss)</h5>
+	<p>This sample automatically creates and activates a reference image, and places an anchored ducky when it's detected.  Print hubs.png so that it's 20cm wide.</p>
+</div>
+<button type=button id=go-button>Go</button>
+<br>
+<div id="reset"></div>
+<script type=module>
+        // some dependencies and utilities
+        import * as mat4 from '../libs/gl-matrix/mat4.js'
+        import * as vec3 from '../libs/gl-matrix/vec3.js'
+
+        // import * as THREE from '../libs/three.js'
+        import XREngine from "../XREngine.js"
+
+        // import * as WebLayer3D from "../libs/three-web-layer.es5.js"
+
+        let device = null
+        let session = null
+        let eyeLevelFrameOfReference = null
+        let engine = null
+        
+        var meshMap = new Map()
+        
+        // temporary working variables
+        const workingMatrix = mat4.create()
+        const workingVec3 = vec3.create()
+
+        var savedOrigin = [0,0,0]
+        var savedDirection = [0,0,-1]
+        
+        var ambientLight = null
+        var directionalLight = null
+
+        var duckyCreated = false
+        var imageDetectionCreationRequested = false
+        var imageActivateDetection = false;
+        var imageActivated = false;
+        var imageAnchor = null
+
+        var ducky = new THREE.Group()
+        ducky.name = "Duck group"
+        var loader = new THREE.GLTFLoader().setPath( './' );
+			loader.load( 'DuckyMesh.glb', 
+				function ( gltf ) {
+                    ducky = new THREE.Group()
+                    ducky.name = "Duck group"
+                    let duckyNode = gltf.scene
+                    duckyNode.position.set(0, -0.01, 0)
+                    ducky.add(duckyNode)
+                    duckyCreated = true
+				}, 
+				null,  // progress callback
+				function(e) {
+					console.error('could not load gltf', ...params)
+				})
+
+        // set up some stats, including a new pane for CV fps
+        var stats = new Stats();
+        stats.domElement.style.cssText = 'position:fixed;top:2%;right:2%;cursor:pointer;opacity:0.9;z-index:10000';
+        document.body.appendChild( stats.dom );
+        
+        function initializeScene() {
+            ambientLight = engine.addAmbientLight()
+            directionalLight = engine.addDirectionalLight()
+            // Add a box and axis at the origin of the eye-level coordinate system
+            // for debugging by uncommenting these lines
+            // engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+            // engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+        }
+
+        // Called once per frame, before render, to give the app a chance to update this.scene
+        function updateScene(frame){
+            stats.update()
+            let hubsImageName = 'hubs'
+
+            let worldInfo = frame.worldInformation
+            if(worldInfo.estimatedLight){
+                let ambientIntensity = worldInfo.estimatedLight.ambientIntensity
+                ambientLight.intensity = ambientIntensity;
+                directionalLight.intensity = ambientIntensity * 0.5;
+            }
+
+            if (!imageDetectionCreationRequested && duckyCreated) {
+                imageDetectionCreationRequested = true
+                let hubsImageData = getImageData('hubs-image')
+
+                session.nonStandard_createDetectionImage(hubsImageName, hubsImageData.data, hubsImageData.width, hubsImageData.height, 0.2).then(() => {
+                    let resetButton = document.createElement('button')
+                    resetButton.setAttribute('class', 'reset-button')
+                    resetButton.innerText = 'Reset'
+                    document.getElementById('reset').appendChild(resetButton)
+                    resetButton.addEventListener('click', ev => {
+                        imageActivateDetection = true;
+                        //engine.removeAnchoredNode(ducky)
+                        if (imageAnchor) {
+                            session.removeAnchor(imageAnchor)
+                            engine.removeAnchoredNode(ducky)
+                            imageAnchor = null
+                        }
+                    })
+
+                    // ready to go!
+                    imageActivateDetection = true;
+                }).catch(error => {
+                    console.error(`error creating ducky detection image: ${error}`)
+				})
+            }
+
+            if (!imageActivated && imageActivateDetection) {
+                imageActivated = true;
+                imageActivateDetection = false;
+
+                session.nonStandard_activateDetectionImage(hubsImageName).then(anchor => {
+                    imageActivated = false;
+                    imageAnchor = anchor
+                    imageAnchor.addEventListener("remove", _handleRemoveWorldAnchor)
+                    engine.addAnchoredNode(imageAnchor, ducky)
+                }).catch(error => {
+                    imageActivated = false;
+                    console.error(`error activating ducky detection image: ${error}`)
+                })
+            }
+        }
+
+        // removing the anchored node is handled by the engine, we just need to update 
+        // the flag saying "there's no image"
+        function _handleRemoveWorldAnchor(event) {
+            imageActivated = false;
+        }
+
+        function getImageData(imageID) {
+            let canvas = document.createElement('canvas');
+            let context = canvas.getContext('2d');
+            let img = document.getElementById(imageID);
+            canvas.width = img.width;
+            canvas.height = img.height;
+            context.drawImage(img, 0, 0 );
+            return context.getImageData(0, 0, img.width, img.height);
+		}
+
+        ////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////
+        // BOILER PLATE.  Can you feel the plates boiling?
+        //
+        // Create the output context where the XRSession will place composited renders
+        const xrCanvas = document.createElement('canvas')
+        xrCanvas.setAttribute('class', 'xr-canvas')
+        const xrContext = xrCanvas.getContext('xrpresent')
+        if(!xrContext){
+            console.error('No XR context', xrCanvas)
+        }
+
+        // get the XR Device
+        navigator.xr.requestDevice().then(xrDevice => {
+            device = xrDevice
+        }).catch(err => {
+            console.error('Error', err)
+        })
+
+        document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
+        function hideMe(event) { 
+            event.target.style.display = 'none' 
+            event.stopPropagation()
+        }
+
+        document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
+        document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
+        function handleGoButtonTouch(event) { 
+            event.stopPropagation()
+        }
+
+        /////////////////////
+        // Session startup / shutdown
+        function handleStartSessionRequest(ev){
+            if(device === null){
+                console.error('No xr device')
+                return
+            }
+
+            if (!session) {
+                device.requestSession({ 
+                        outputContext: xrContext,
+                        worldSensing: true  
+                    }).then(handleSessionStarted)
+                    .catch(err => {
+                        console.error('Session setup error', err)
+                    })
+                document.getElementById('go-button').innerText = "End"
+                document.getElementById('go-button').style.display = "none"
+            } else {
+                session.end()
+                handleSessionEnded();
+                document.getElementById('description').style.display = 'block' 
+                document.getElementById('go-button').style.display = "block"
+                document.getElementById('go-button').innerText = "Go"
+            }
+        }
+
+        function handleSessionEnded() {	
+            session = null
+        }
+
+        function handleSessionStarted(xrSession){
+            session = xrSession
+            document.body.insertBefore(xrCanvas, document.body.firstChild)
+
+            // Create the context where we will render our 3D scene
+            const canvas = document.createElement('canvas')
+            var glContext = canvas.getContext('webgl', {
+                compatibleXRDevice: device
+            })
+            if(!glContext) throw new Error('Could not create a webgl context')
+
+            session.nonStandard_setNumberOfTrackedImages(4)
+
+            // Set up the base layer
+            session.baseLayer = new XRWebGLLayer(session, glContext)
+
+            // Create a simple test scene and renderer
+            // The engine's scene is in the eye-level coordinate system 
+            engine = new XREngine(canvas, glContext)
+
+            createRootNode().then(() => {
+                // Kick off rendering
+                session.requestAnimationFrame(handleAnimationFrame)
+            })
+
+            initializeScene()
+        }
+
+        async function createRootNode() {
+            let headFrameOfReference = await session.requestFrameOfReference('head-model')
+            eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+            // get the location of the device, and use it to create an 
+            // anchor with the identity orientation
+            headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+            mat4.getTranslation(workingVec3, workingMatrix)
+            mat4.fromTranslation(workingMatrix, workingVec3)
+
+            let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+            engine.addAnchoredNode(anchor, engine.root)
+            
+            return true
+        }
+
+        // render loop			
+        function handleAnimationFrame(t, frame){
+            if(!session || session.ended) return
+            updateScene(frame)
+            session.requestAnimationFrame(handleAnimationFrame)
+
+            let pose = frame.getDevicePose(eyeLevelFrameOfReference)
+            if(!pose){
+                console.log('No pose')
+                return
+            }
+
+            engine.startFrame()
+            for (let view of frame.views) {
+                engine.preRender(
+						session.baseLayer.getViewport(view),
+						view.projectionMatrix,
+						pose.getViewMatrix(view)
+					)
+                engine.render()
+            }
+            engine.endFrame()
+        }
+
+    </script>
+</body>
+</html>

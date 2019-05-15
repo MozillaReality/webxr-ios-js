@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import EventTarget from 'webxr-polyfill/src/lib/EventTarget';
 import XRAnchor from '../extensions/XRAnchor';
 import XRAnchorOffset from '../extensions/XRAnchorOffset';
@@ -6,9 +13,7 @@ import XRImageAnchor from '../extensions/XRImageAnchor'
 import XRFaceMesh from '../extensions/XRFaceMesh'
 import XRVideoFrame from '../extensions/XRVideoFrame'
 import XRLightEstimate from '../extensions/XRLightEstimate'
-
 import base64 from "../lib/base64-binary.js";
-
 import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
 import XRMesh from '../extensions/XRMesh';
 
@@ -40,6 +45,9 @@ export default class ARKitWrapper extends EventTarget {
 		this._waitingForSessionStart = false
 		this._isInitialized = false
 		this._rawARData = null
+
+		this._rAF_callback = null
+		this._rAF_callbackParams = []
 
 		/**
 		 * session state, returned from session and updated when it changes.
@@ -86,7 +94,7 @@ export default class ARKitWrapper extends EventTarget {
 		/**
 		 * The list of meshes, including planes and face anchors, coming from ARKit.
 		 */
-		this._meshes = new Map();
+		//this._meshes = new Map();
 
 		/* other anchors from ARKit.  Faces, images, results of hit testing. */
 		this._anchors = new Map();
@@ -216,7 +224,6 @@ export default class ARKitWrapper extends EventTarget {
 
 			options.geometry_arrays = true		// get the geomtry in flattened arrays
 			XRMesh.setUseGeomArrays()
-
 			
 			ARKitWrapper.GLOBAL_INSTANCE._sendInit(options)
 		} 
@@ -400,26 +407,27 @@ export default class ARKitWrapper extends EventTarget {
 		return new Promise((resolve, reject) => {
 			// create a placeholder anchor so we can use it's uid, and don't
 			// put it in the anchorlist yet, until the promise resolves
-			var anchor = new XRAnchor(anchorInWorldMatrix, this._timestamp)
-			this._addAnchor(anchor.uid, anchorInWorldMatrix).then(detail => { 
+			var tempAnchor = new XRAnchor(anchorInWorldMatrix, null, this._timestamp)
+			this._addAnchor(tempAnchor.uid, anchorInWorldMatrix).then(detail => { 
 				// of there was an error ...
 				if (detail.error) {
 					reject(detail.error)
+					return;
 				}
 
-				var _anchor = this._anchors.get(detail.uuid);
-				if(!_anchor){
+				var anchor = this._anchors.get(detail.uuid);
+				if(!anchor){
 					// need to get the data in eye-level reference frame
-					this._anchors.set(detail.uuid, {
-						id: detail.uuid,
-						object: anchor
-					});
+					this._anchors.set(detail.uuid, tempAnchor);
+					resolve(tempAnchor)
 				}else{
-					anchor = _anchor
+					// may have gotten added before the promise resolved
+					anchor.placeholder = false
+					anchor.deleted = false 
 					anchor.updateModelMatrix(detail.transform, this._timestamp);
+					resolve(anchor)
 				}
 
-				resolve(anchor)
 			}).catch((...params) => {
 				console.error('could not create anchor', ...params)
 				reject()
@@ -432,16 +440,12 @@ export default class ARKitWrapper extends EventTarget {
 			if (hit.anchor_transform) {
 				// Use the first hit to create an XRAnchorOffset, creating the ARKit XRAnchor as necessary
 				let anchor = this._anchors.get(hit.uuid)
-				if(!anchor){
-					anchor = this._meshes.get(hit.uuid)
-
-					if (!anchor) {
-						anchor = new XRAnchor(hit.anchor_transform, hit.uuid, this._timestamp)
-						console.log('created dummy anchor from hit test')
-						// mark this as possibly needing replacement
-						anchor.placeholder = true;
-						this._anchors.set(hit.uuid, anchor)
-					}
+				if(!anchor) {
+					anchor = new XRAnchor(hit.anchor_transform, hit.uuid, this._timestamp)
+					console.log('created dummy anchor from hit test')
+					// mark this as possibly needing replacement
+					anchor.placeholder = true;
+					this._anchors.set(hit.uuid, anchor)
 				}
 
 				// const offsetPosition = [
@@ -454,7 +458,7 @@ export default class ARKitWrapper extends EventTarget {
 				// const inverseAnchorRotation = quat.invert(q, quat.fromMat3(q, mat3.fromMat4(mat3.create(), hit.anchor_transform)))
 				// const offsetRotation = quat.multiply(q, worldRotation, inverseAnchorRotation)
 				// const offset = mat4.fromRotationTranslation(mat4.create(), offsetRotation, offsetPosition)
-				const wt = mat4.multiply(mat4.create(), hit.anchor_transform, hit.local_transform)
+				//const wt = mat4.multiply(mat4.create(), hit.anchor_transform, hit.local_transform)
 				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform)
 				resolve(anchorOffset)
 			} else {
@@ -471,6 +475,8 @@ export default class ARKitWrapper extends EventTarget {
 					anchor.placeholder = true;
 					this._anchors.set(hit.uuid, anchor)
 				} else {
+					anchor.placeholder = false
+					anchor.deleted = false
 					console.log('hit test resulted in a hit on an existing anchor, without an offset')
 				}
 				resolve(anchor)
@@ -479,14 +485,17 @@ export default class ARKitWrapper extends EventTarget {
 	}
 
 	removeAnchor(anchor) {
-		if(this._anchors.get(anchor.uid)) {
+		let _anchor = this._anchors.get(anchor.uid)
+		if (_anchor.placeholder) {
 			this._anchors.delete(anchor.uid)
+			return
 		}
-		if(this._meshes.get(anchor.uid)) {
-			this._meshes.delete(anchor.uid)
+		if (_anchor) {
+			_anchor.deleted = true
 		}
+
 		// only remove real ARKit anchors from native code
-		if (!(anchor.placeholder || anchor instanceof XRAnchorOffset)) { 
+		if (!anchor instanceof XRAnchorOffset) { 
 			window.webkit.messageHandlers.removeAnchors.postMessage([anchor.uid])
 		}
 	}
@@ -499,7 +508,7 @@ export default class ARKitWrapper extends EventTarget {
 	 * Supply the image in an ArrayBuffer, typedArray or ImageData
 	 * width and height are in meters 
 	 */
-  createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+  _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
 		return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -518,13 +527,59 @@ export default class ARKitWrapper extends EventTarget {
             })
 		})
 	}
+  createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		return new Promise((resolve, reject) => {
+			this._createDetectionImage(uid, buffer, width, height, physicalWidthInMeters).then(detail => { 
+				if (detail.error) {
+					reject(detail.error)
+					return;
+				}
+				if (!detail.created) {
+					reject(null)
+					return;
+				}
+				resolve()
+			}).catch((...params) => {
+				console.error('could not create image', ...params)
+				reject()
+			})
+		});
+	}
+
+	_destroyDetectionImage(uid) {
+		return new Promise((resolve, reject) => {
+            if (!this._isInitialized){
+                reject(new Error('ARKit is not initialized'));
+                return;
+						}
+						
+            window.webkit.messageHandlers.destroyImageAnchor.postMessage({
+                uid: uid,
+								callback: this._createPromiseCallback('destroyImageAnchor', resolve)
+            })
+		})
+	}
+  destroyDetectionImage(uid) {
+		return new Promise((resolve, reject) => {
+			this._destroyDetectionImage(uid).then(detail => { 
+				if (detail.error) {
+					reject(detail.error)
+					return;
+				}
+				resolve()
+			}).catch((...params) => {
+				console.error('could not destroy image', ...params)
+				reject()
+			})
+		});
+	}
 
     /***
 	 * activateDetectionImage activates an image and waits for the detection
      * @param uid The UID of the image to activate, previously created via "createImageAnchor"
      * @returns {Promise<any>} a promise that will be resolved when ARKit detects the image, or an error otherwise
      */
-	activateDetectionImage(uid, trackable = false) {
+	_activateDetectionImage(uid, trackable = false) {
         return new Promise((resolve, reject) => {
             if (!this._isInitialized){
                 reject(new Error('ARKit is not initialized'));
@@ -539,13 +594,90 @@ export default class ARKitWrapper extends EventTarget {
         })
 	}
 
+	activateDetectionImage(uid, trackable = false) {
+		return new Promise((resolve, reject) => {
 
+			// when we delete an anchor, it refinds it. So, if we delete the anchor and then
+			// call activate, there's a chance it will already have been found and created and
+			// sent here
+			var anchor = this._anchors.get(uid);
+			if (anchor && !anchor.deleted) {
+				// the anchor might still be here, but not been "recreated", so we only 
+				// use it if it's really been recreated
+				resolve(anchor)
+				return
+			}
+			this._activateDetectionImage(uid, trackable).then(detail => { 
+				if (detail.error) {
+					reject(detail.error)
+					reject;
+				}
+				if (!detail.activated) {
+					reject(null)
+					return;
+				}
+				
+				this._createOrUpdateAnchorObject(detail.imageAnchor)
+				detail.imageAnchor.object.deleted = false
+				resolve(detail.imageAnchor.object)
+			}).catch((...params) => {
+				console.error('could not activate image', ...params)
+				reject()
+			})
+		});
+	}
+
+
+	_deactivateDetectionImage(uid) {
+		return new Promise((resolve, reject) => {
+				if (!this._isInitialized){
+						reject(new Error('ARKit is not initialized'));
+						return;
+				}
+
+				window.webkit.messageHandlers.deactivateDetectionImage.postMessage({
+						uid: uid,
+						callback: this._createPromiseCallback('deactivateDetectionImage', resolve)
+				})
+		})
+	}
+
+	deactivateDetectionImage(uid) {
+		return new Promise((resolve, reject) => {
+			this._deactivateDetectionImage(uid).then(detail => { 
+				if (detail.error) {
+					reject(detail.error)
+					reject;
+				}
+
+				// when we deactivate an image, there is a chance the anchor could still be
+				// around.  Delete it 
+				var anchor = this._anchors.get(uid);
+				if (anchor) {
+					console.warn("anchor for image target '" + uid + "' still exists after deactivation")
+					removeAnchor(anchor)
+				}
+
+				resolve()
+			}).catch((...params) => {
+				console.error('could not activate image', ...params)
+				reject()
+			})
+		});
+	}
+
+	setNumberOfTrackedImages(count) {
+		if (typeof(count) != "number") {
+			count = 0
+		}
+		window.webkit.messageHandlers.setNumberOfTrackedImages.postMessage({ numberOfTrackedImages: count })
+	}
 
 	/***********************************************
 	 * getWorldMap requests a worldmap from the platform
 	 * @returns {Promise<any>} a promise that will be resolved when the worldMap has been retrieved, or an error otherwise
 	 */
-	getWorldMap() {
+	_getWorldMap() {
 		return new Promise((resolve, reject) => {
 					if (!this._isInitialized){
 							reject(new Error('ARKit is not initialized'));
@@ -558,6 +690,25 @@ export default class ARKitWrapper extends EventTarget {
 		})
 	}
 
+	getWorldMap() {
+		return new Promise((resolve, reject) => {
+			this._getWorldMap().then(ARKitWorldMap => {
+				if (ARKitWorldMap.saved === true) {
+						resolve(ARKitWorldMap.worldMap)
+				} else if (ARKitWorldMap.error !== null) {
+						reject(ARKitWorldMap.error)
+						return;
+				} else {
+						reject(null)
+						return;
+				}
+			}).catch((...params) => {
+				console.error('could not get world map', ...params)
+				reject()
+			})
+		})
+	}
+	
 	/***
 	* setWorldMap requests a worldmap for the platform be set
 	* @returns {Promise<any>} a promise that will be resolved when the worldMap has been set, or an error otherwise
@@ -721,11 +872,14 @@ export default class ARKitWrapper extends EventTarget {
 
 	*/
 	_createOrUpdateAnchorObject(element) {
+		// did this anchor get deleted?  If so, we don't want to 
+		// recreate it
+
 		if(element.plane_center){
-			var plane = this._meshes.get(element.uuid);
+			//// var plane = this._meshes.get(element.uuid);
 			var anchor = this._anchors.get(element.uuid);
 
-			if(!plane){
+			if(!anchor || anchor.placeholder){
 				var planeObject = new XRPlaneMesh(element.transform,
 					element.plane_center,
 					[element.plane_extent.x, element.plane_extent.z],
@@ -749,30 +903,24 @@ export default class ARKitWrapper extends EventTarget {
 					this._anchors.delete(element.uuid)
 				} 
 
-				this._meshes.set(element.uuid, {
-					id: element.uuid,
-					// center: element.plane_center,
-					// extent: [element.plane_extent.x, element.plane_extent.z],
-					// modelMatrix: element.transform,
-					// alignment: element.plane_alignment,
-					object: planeObject
-				});
+				this._anchors.set(element.uuid, planeObject);
 				element.object = planeObject
-			} else {
+			} else if (anchor) {
 				// plane.center = element.plane_center
 				// plane.extent[0] = element.plane_extent.x
 				// plane.extent[1] = element.plane_extent.y
 				// plane.modelMatrix = element.transform
 				// plane.alignment = element.plane_alignment
 				// plane.geometry = element.geometry
-				plane.object.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp)
-				element.object = plane.object
+				anchor.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp)
+				element.object = anchor
 			}
-		}else{
-			var mesh = this._meshes.get(element.uuid);
+		} else {
+			////var mesh = this._meshes.get(element.uuid);
 			var anchor = this._anchors.get(element.uuid);
 
-			if((!anchor && !mesh) || (anchor && anchor.placeholder)){
+			//// if((!anchor && !mesh) || (anchor && anchor.placeholder)){
+			if(!anchor || anchor.placeholder) {
 				let anchorObject
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
@@ -787,8 +935,9 @@ export default class ARKitWrapper extends EventTarget {
 				}
 
 				// if there is an old anchor, that was a placeholder, replace it
-				if (anchor || mesh) {
-					try {
+				//if (anchor || mesh) {
+				if (anchor) {
+						try {
 						anchor.dispatchEvent("replaceAnchor",
 							new CustomEvent("replaceAnchor", {
 								source: anchor || mesh,
@@ -800,33 +949,25 @@ export default class ARKitWrapper extends EventTarget {
 					}
 					console.log('replaced dummy anchor created from hit test with new anchor')
 				}
-				switch (element.type) {
-					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						this._meshes.set(element.uuid, {
-							id: element.uuid,
-							object: anchorObject
-							// modelMatrix: element.transform
-						});
-						break;
-					default:
-						this._anchors.set(element.uuid, {
-							id: element.uuid,
-							object: anchorObject
-							// modelMatrix: element.transform
-						});
-				}
+				// switch (element.type) {
+				// 	case ARKitWrapper.ANCHOR_TYPE_FACE:
+				// 		this._meshes.set(element.uuid, anchorObject);
+				// 		break;
+				// 	default:
+						this._anchors.set(element.uuid, anchorObject);
+				// }
 				element.object = anchorObject
 			} else {
-				anchor = anchor || mesh
+				anchor = anchor ///// || mesh
 				switch (element.type) {
 					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						anchor.object.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp)
+						anchor.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp)
 						break
 					default:
-						anchor.object.updateModelMatrix(element.transform, this._timestamp)
+						anchor.updateModelMatrix(element.transform, this._timestamp)
 						break;
 				}
-				element.object = anchor.object
+				element.object = anchor
 			}
 		}
 	}
@@ -862,11 +1003,12 @@ export default class ARKitWrapper extends EventTarget {
 		}
 		if (this._worldSensingState.meshDetectionState) {
 			state.meshes = []
-			this._meshes.forEach(mesh => { 
+			this._anchors.forEach(anchor => { 
 				// there is a chance that mesh-related anchors will be created before they
 				// have any geometry.  Only return ones with meshes
-				if (mesh.object.vertexPositions.length > 0) { 
-					state.meshes.push(mesh.object) 
+				//////if (mesh.vertexPositions.length > 0) { 
+				if (anchor.isMesh() && !anchor.deleted && !anchor.placeholder) { 
+					state.meshes.push(anchor) 
 				}
 			})
 		}
@@ -890,17 +1032,57 @@ export default class ARKitWrapper extends EventTarget {
 		return null
 	}	
 
+	requestAnimationFrame(callback, ...params) {
+		this._rAF_callback = callback
+		this._rAF_callbackParams = params
+
+		// if there's data waiting, skip it because we're behind 
+	}
+
+	_do_rAF() {
+		if (this._rAF_callback) {
+			var _callback = this._rAF_callback
+			var _params = this._rAF_callbackParams
+
+			this._rAF_callback = null
+			this._rAF_callbackParams = []
+
+
+			// // add a tiny delay, which will hopefully help with the rendering 
+			// // race conditions caused by SceneKit on fast devices, until we move to Metal
+			// let sleep = function (time) {
+			// 	return new Promise((resolve) => setTimeout(resolve, time));
+			// }
+			
+			return window.requestAnimationFrame((...params) => {
+			  // sleep(1).then(() => {
+					this.startingRender()
+					try {
+						_callback(..._params)
+					} catch(e) {
+						console.error('application callback error: ', e)
+					}	
+					this.finishedRender()
+				// })
+			})
+		}
+	}
+
 	// this should be called after a frame has been processed.  Can't do it below because
 	// we don't know if we'll get data faster than we can render
 	finishedRender() { 
 		this._dataBeforeNext = 0
-		this._meshes.forEach(mesh => { mesh.object.clearChanged() })
-		this._anchors.forEach(anchor => { anchor.object.clearChanged() })
+		// this._meshes.forEach(mesh => { 
+		// 	mesh.clearChanged() 
+		// })
+		this._anchors.forEach(anchor => { 
+			anchor.clearChanged() 
+		})
 	}
 
 	startingRender() {
 		if (this._dataBeforeNext > 1) {
-			console.warn("More than one Data packet since last render", this._dataBeforeNext)
+			//console.warn("More than one Data packet since last render", this._dataBeforeNext)
 		}
 	}
   
@@ -908,7 +1090,6 @@ export default class ARKitWrapper extends EventTarget {
 		this._rawARData = data
 		var plane, anchor
 
-		this._dataBeforeNext++  
 		this._worldInformation = null
 
 		this._timestamp = this._adjustARKitTime(data.timestamp)
@@ -922,6 +1103,10 @@ export default class ARKitWrapper extends EventTarget {
 		if(data.newObjects.length){
 			for (let i = 0; i < data.newObjects.length; i++) {
 				const element = data.newObjects[i];
+				var anchor = this._anchors.get(element.uuid);
+				if (anchor && anchor.deleted) {
+					anchor.deleted = false
+				}
 				this._createOrUpdateAnchorObject(element)
 			}
 		}
@@ -929,19 +1114,19 @@ export default class ARKitWrapper extends EventTarget {
 		if(data.removedObjects.length){
 			for (let i = 0; i < data.removedObjects.length; i++) {
 				const element = data.removedObjects[i];
-				const plane = this._meshes.get(element)
-				if(plane){
-					plane.object.notifyOfRemoval();
-					this._meshes.delete(element);
-				}else{
-					const anchor = this._anchors.get(element)
+				// const plane = this._meshes.get(element)
+				// if(plane){
+				// 	plane.notifyOfRemoval();
+				// 	this._meshes.delete(element);
+				// }else{
+					const anchor = this._anchors.get(element);
 					if (anchor) {
-						anchor.object.notifyOfRemoval();
+						anchor.notifyOfRemoval();
 						this._anchors.delete(element);
 					} else {
 						console.error("app signalled removal of non-existant anchor/plane")
 					}
-				}
+				// }
 			}
 		}
 
@@ -963,6 +1148,12 @@ export default class ARKitWrapper extends EventTarget {
 		} catch(e) {
 				console.error('WATCH_EVENT event error', e)
 		}
+
+		// if there's a rAF waiting, schedule it
+		if (this._rAF_callback) {
+			this._do_rAF()
+		}
+		this._dataBeforeNext++  
 
 	}
 

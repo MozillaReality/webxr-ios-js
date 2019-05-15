@@ -1,10 +1,13 @@
 <html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
 	<head>
 		<title>Boombox</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<script src="../libs/three.min.js"></script>
-		<script src="../libs/three-gltf-loader.js"></script>
+		<script src="../libs/three/three.min.js"></script>
+		<script src="../libs/three/loaders/GLTFLoader.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
@@ -24,15 +27,12 @@
 
 			let device = null
 			let session = null
-			let headFrameOfReference = null
 			let eyeLevelFrameOfReference = null
-			let layer = null
-			let frameOfReference = null
 			let engine = null
 
 			// temporary working variables
-			const workingMatrix1 = mat4.create()
-			const identity = mat4.identity(mat4.create())
+			const workingMatrix = mat4.create()
+			const workingVec3 = vec3.create()
 
 			// start the textures and the boombox model loading immediately
 			const startGroup = new THREE.Group()
@@ -46,34 +46,38 @@
 				path + 'posz' + format, path + 'negz' + format
 			])
 			envMap.format = THREE.RGBFormat			
-			
-			loadGLTF('../models/BoomBox/glTF-pbrSpecularGlossiness/BoomBox.gltf').then(gltf => {
-				gltf.scene.scale.set(15, 15, 15)
-				gltf.scene.position.set(0, 0, -1)
-				gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
 
-				gltf.scene.traverse(node => {
-					if (node.material && (node.material.isMeshStandardMaterial || (node.material.isShaderMaterial && node.material.envMap !== undefined))){
-						node.material.envMap = envMap
-						node.material.needsUpdate = true
-					}
+			var loader = new THREE.GLTFLoader().setPath( '../models/BoomBox/glTF-pbrSpecularGlossiness/' );
+			loader.load( 'BoomBox.gltf', 
+				function ( gltf ) {
+					gltf.scene.scale.set(15, 15, 15)
+					gltf.scene.position.set(0, 0, -1)
+					gltf.scene.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
+
+					gltf.scene.traverse(node => {
+						if (node.material && (node.material.isMeshStandardMaterial || (node.material.isShaderMaterial && node.material.envMap !== undefined))){
+							node.material.envMap = envMap
+							node.material.needsUpdate = true
+						}
+					})
+
+					startGroup.add(gltf.scene)
+				}, 
+				null,  // progress callback
+				function(e) {
+					console.error('could not load gltf', ...params)
 				})
-
-				startGroup.add(gltf.scene)
-			}).catch((...params) =>{
-				console.error('could not load gltf', ...params)
-			})
 
 			function initializeScene(){
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
 
-				// Add a box and axis at the origin of the eye-level coordinate system
+				// Add a box and axis at the origin of our starting coordinate system
 				// for debugging by uncommenting these lines
 				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+				// engine.addAxesHelper([0, 0,0], [0.2,0.2,0.2])				
 
-				engine.scene.add(startGroup)
+				engine.root.add(startGroup)
 				engine.scene.background = new THREE.Color(0x222222)
 				engine.scene.background = envMap
 			}
@@ -101,7 +105,6 @@
 				event.stopPropagation()
 			}
 
-
 			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest)
 			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
 			function handleGoButtonTouch(event) { 
@@ -121,10 +124,12 @@
 							console.error('Session setup error', err)
 						})
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = "none"
 				} else {
 					session.end()
 					handleSessionEnded();
 					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').style.display = "block"
 					document.getElementById('go-button').innerText = "Go"
 				}
 			}
@@ -151,37 +156,28 @@
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, glContext)
 
-				// head-model is the coordinate system that tracks the position of the display
-				session.requestFrameOfReference('head-model').then(frameOfReference =>{
-					headFrameOfReference = frameOfReference
-
-					// eye-level is the coordinate system of the ARKit tracking system 
-					session.requestFrameOfReference('eye-level').then(frameOfReference => {
-						eyeLevelFrameOfReference = frameOfReference
-	
-						//// this TIMEOUT NEEDS TO BE REMOVED but there's a bug in requestSession
-						//// returning too fast
-						//window.setTimeout(() => {
-							// add an anchor where the camera is
-							session.addAnchor(identity, headFrameOfReference).then(anchor => {			
-								engine.addAnchoredNode(anchor, startGroup)
-							}).catch(err => {
-								console.error('Error adding anchor', err)
-							})
-						//}, 4000)
-						// Kick off rendering
-						session.requestAnimationFrame(handleAnimationFrame)
-					})
-					.catch(err => {
-						console.error('Error finding eye frame of reference', err)
-					})					
+				createRootNode().then(() => {
+					// Kick off rendering
+					session.requestAnimationFrame(handleAnimationFrame)
 				})
-				.catch(err => {
-					console.error('Error finding head frame of reference', err)
-				})
-				
 
 				initializeScene()
+			}
+
+			async function createRootNode() {
+				let headFrameOfReference = await session.requestFrameOfReference('head-model')
+				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+				// get the location of the device, and use it to create an 
+				// anchor with the identity orientation
+				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+				mat4.getTranslation(workingVec3, workingMatrix)
+				mat4.fromTranslation(workingMatrix, workingVec3)
+
+				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+				engine.addAnchoredNode(anchor, engine.root)
+				
+				return true
 			}
 
 			function handleAnimationFrame(t, frame){
@@ -196,12 +192,12 @@
 
 				engine.startFrame()
 				for (let view of frame.views) {
-					engine.render(
+					engine.preRender(
 						session.baseLayer.getViewport(view),
 						view.projectionMatrix,
 						pose.getViewMatrix(view)
 					)
-					break
+					engine.render()
 				}
 				engine.endFrame()
 			}

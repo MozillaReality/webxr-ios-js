@@ -1,11 +1,12 @@
-
-  
-  <html>
+<html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
 	<head>
 		<title>Reticle example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<script src="../libs/three.min.js"></script>
+		<script src="../libs/three/three.min.js"></script>
  		<script module src="../../dist/webxr.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
@@ -34,15 +35,13 @@
 
 			let device = null
 			let session = null
-			let headFrameOfReference = null
 			let eyeLevelFrameOfReference = null
-			let layer = null
-			let frameOfReference = null
 			let engine = null
 			
 			// temporary working variables
 			const workingMatrix = mat4.create()
-			const identity = mat4.identity(mat4.create())
+			const workingVec3 = vec3.create()
+
 			var savedOrigin = [0,0,0]
 			var savedDirection = [0,0,-1]
 			var reticleParent = new THREE.Object3D()
@@ -94,16 +93,18 @@
 				if (hits.length > 0) {
 					let hit = hits[0]
 
-					// convert hit matrices from head to eye level coordinate systems
-					const csTransform = headFrameOfReference.getTransformTo(eyeLevelFrameOfReference)
-					mat4.multiply(workingMatrix, csTransform, hit.hitMatrix)
+					session.requestFrameOfReference('head-model').then(headFrameOfReference => {
+						// convert hit matrices from head to eye level coordinate systems
+						headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+						mat4.multiply(workingMatrix, workingMatrix, hit.hitMatrix)
 
-					const node = reticleParent
-					node.matrix.fromArray(workingMatrix)
-					reticleParent.visible = true   // it starts invisible
-					reticle.material.color = reticleTrackedColor
+						const node = reticleParent
+						node.matrix.fromArray(workingMatrix)
+						reticleParent.visible = true   // it starts invisible
+						reticle.material.color = reticleTrackedColor
 
-					node.updateMatrixWorld(true)
+						node.updateMatrixWorld(true)
+					})
 				} else {
 					reticle.material.color = reticleNotTrackedColor
 				}
@@ -115,11 +116,13 @@
 					if (requestNextHit) {
 						requestNextHit = false
 
-						session.requestHitTest(savedOrigin, savedDirection, headFrameOfReference)
-							.then(handleHitResults)
-							.catch(err => {
-								console.error('Error testing hits', err)
-							})
+						session.requestFrameOfReference('head-model').then(headFrameOfReference => {
+							session.requestHitTest(savedOrigin, savedDirection, headFrameOfReference)
+								.then(handleHitResults)
+								.catch(err => {
+									console.error('Error testing hits', err)
+								})
+						})
 					}
 				}
 			}
@@ -174,10 +177,7 @@
 					console.log('No session for hit testing')
 					return
 				}
-				if(headFrameOfReference === null){
-					console.log('No frame of reference')
-					return
-				}
+
 				// Convert the screen coordinates into head-model origin/direction for hit testing
 				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
 																							engine.camera.projectionMatrix)
@@ -204,11 +204,13 @@
 							console.error('Session setup error', err)
 						})
 					document.getElementById('go-button').innerText = "End"
+					document.getElementById('go-button').style.display = "none"
 				} else {
 					session.end()
 					handleSessionEnded();
 					reticleParent.visible = false   // it starts invisible
 					document.getElementById('description').style.display = 'block' 
+					document.getElementById('go-button').style.display = "block"
 					document.getElementById('go-button').innerText = "Go"
 				}
 			}
@@ -242,24 +244,28 @@
 				// Our custom engine class does hit testing at the end of each rAF 
 				engine = new XREngineHits(canvas, glContext)
 
-				// head-model is the coordinate system that tracks the position of the display
-				session.requestFrameOfReference('head-model').then(frameOfReference =>{
-					headFrameOfReference = frameOfReference
-				})
-				.catch(err => {
-					console.error('Error finding head frame of reference', err)
-				})
-				// eye-level is the coordinate system of the ARKit tracking system 
-				session.requestFrameOfReference('eye-level').then(frameOfReference => {
-					eyeLevelFrameOfReference = frameOfReference
+				createRootNode().then(() => {
 					// Kick off rendering
 					session.requestAnimationFrame(handleAnimationFrame)
 				})
-				.catch(err => {
-					console.error('Error finding eye frame of reference', err)
-				})
 
 				initializeScene()
+			}
+
+			async function createRootNode() {
+				let headFrameOfReference = await session.requestFrameOfReference('head-model')
+				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+				// get the location of the device, and use it to create an 
+				// anchor with the identity orientation
+				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+				mat4.getTranslation(workingVec3, workingMatrix)
+				mat4.fromTranslation(workingMatrix, workingVec3)
+
+				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+				engine.addAnchoredNode(anchor, engine.root)
+				
+				return true
 			}
 
 			////////////////
@@ -277,12 +283,12 @@
 
 				engine.startFrame()
 				for (let view of frame.views) {
-					engine.render(
+					engine.preRender(
 						session.baseLayer.getViewport(view),
 						view.projectionMatrix,
 						pose.getViewMatrix(view)
 					)
-					break
+					engine.render()
 				}
 				engine.endFrame()
 			}

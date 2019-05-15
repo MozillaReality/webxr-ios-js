@@ -6,6 +6,7 @@
   "directories": {},
   "scripts": {
     "build": "cross-env NODE_ENV=production rollup -c rollup.config.js",
+    "minify": "cross-env NODE_ENV=production rollup -c rollup-minify.config.js",
     "start": "npm run build && http-server ."
   },
   "repository": {
@@ -33,6 +34,6 @@
     "webpack": "^3.5.5"
   },
   "dependencies": {
-    "webxr-polyfill": "^1.0.6"
+    "webxr-polyfill": "git://github.com/blairmacintyre/webxr-polyfill.git#minimal-for-app"
   }
 }

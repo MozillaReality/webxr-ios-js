@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2019 Mozilla Inc. All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+ */
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 
 import PolyfilledXRDevice from 'webxr-polyfill/src/devices/PolyfilledXRDevice'
@@ -6,6 +13,8 @@ import {throttle, throttledConsoleLog} from '../lib/throttle.js'
 
 import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
+import XRGeospatialAnchor from '../extensions/XRGeospatialAnchor.js';
+
 
 export default class ARKitDevice extends PolyfilledXRDevice {
 	constructor(global){
@@ -28,6 +37,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		this._stageMatrix = mat4.identity(mat4.create())
 		this._stageMatrix[13] = -1.3
 
+		this._baseFrameSet = false
+		this._frameOfRefRequestsWaiting = []
+
 		this._depthNear = 0.1
 		this._depthFar = 1000
 
@@ -41,6 +53,23 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 	}
 
+	static initStyles() {
+		window.addEventListener('DOMContentLoaded', () => {
+		  setTimeout(() => {
+			try {
+			  var styleEl = document.createElement('style');
+			  document.head.appendChild(styleEl);
+			  var styleSheet = styleEl.sheet;
+			  styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
+			  styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			  styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
+			} catch(e) {
+			  console.error('page error', e);
+			}
+		  }, 1);
+		});    
+	  }
+		
 	get depthNear(){ return this._depthNear }
 	set depthNear(val){ this._depthNear = val }
 
@@ -48,7 +77,12 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	set depthFar(val){ this._depthFar = val }
 
 	supportsSession(options={}){
-		return options.immersive === false
+		// true if:
+		//  not (geolocation and not alignEUS)  ==>  can only use geolocation if aligneus is true
+		//  not immersive
+		return  !(!options.hasOwnProperty("alignEUS") && 
+				   options.hasOwnProperty("geolocation") && 
+				  !options.hasOwnProperty("immersive"))
 	}
 
 	async requestSession(options={}){
@@ -66,16 +100,19 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 
 		var ARKitOptions = {}
-		if (options.worldSensing) {
+		if (options.hasOwnProperty("worldSensing")) {
 			ARKitOptions.worldSensing = options.worldSensing
 		}
-		if (options.useComputerVision) {
+		if (options.hasOwnProperty("computerVision")) {
 			ARKitOptions.videoFrames = options.useComputerVision
 		}
-		if (options.alignEUS) {
+		if (options.hasOwnProperty("alignEUS")) {
 			ARKitOptions.alignEUS = options.alignEUS
 		}
-
+		var geolocation = false
+		if (options.hasOwnProperty("geolocation") && options.hasOwnProperty("alignEUS")) {
+			geolocation = true
+		}
 		let initResult = await this._arKitWrapper.waitForInit().then(() => {
 		}).catch((...params) => {
 			console.error("app failed to initialize: ", ...params)
@@ -86,6 +123,11 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			const session = new Session(options.outputContext || null)
 			this._sessions.set(session.id, session)
 			this._activeSession = session
+
+			session._useGeolocation = geolocation
+			if (geolocation) {
+//				XRGeospatialAnchor.useSession(session)
+			}
 
 			return Promise.resolve(session.id)
 		}).catch((...params) => {
@@ -102,21 +144,22 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 		layer.context.canvas.style.width = "100%";
 		layer.context.canvas.style.height = "100%";
-		layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
-		layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
+		// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+		// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
-	requestAnimationFrame(callback){
-		return window.requestAnimationFrame((...params) => {
-			this._arKitWrapper.startingRender()
-			try {
-				callback(...params)
-			} catch(e) {
-				console.error('application callback error: ', e)
-			}	
-			this._arKitWrapper.finishedRender()
-		})
-	}
+	requestAnimationFrame(callback, ...params){
+//		return window.requestAnimationFrame((...params) => {
+		// 	this._arKitWrapper.startingRender()
+		// 	try {
+		// 		callback(...params)
+		// 	} catch(e) {
+		// 		console.error('application callback error: ', e)
+		// 	}	
+		// 	this._arKitWrapper.finishedRender()
+		// })
+	    this._arKitWrapper.requestAnimationFrame(callback, params)
+		}
 
 	cancelAnimationFrame(handle){
 		return window.cancelAnimationFrame(handle)
@@ -138,18 +181,35 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		)
 	}
 
-	async requestFrameOfReferenceTransform(type, options){
-		switch(type){
-			case 'head-model':
-				return this._headModelMatrix
-			case 'eye-level':
-				return this._eyeLevelMatrix
-			case 'stage':
-				//return this._stageMatrix
-				throw new Error('stage not supported', type)
-			default:
-				throw new Error('Unsupported frame of reference type', type)
-		}
+	requestFrameOfReferenceTransform(type, options){
+		var that = this
+        return new Promise((resolve, reject) => {
+			let enqueueOrExec = function (callback) {
+				if (that._baseFrameSet) {
+					callback()
+				} else {
+					that._frameOfRefRequestsWaiting.push(callback)
+				}
+			}
+
+			switch(type){
+				case 'head-model':
+					enqueueOrExec(function () { 
+						resolve(that._headModelMatrix) 
+					})
+					return
+				case 'eye-level':
+					enqueueOrExec(function () { 
+						resolve(that._eyeLevelMatrix) 
+					})
+					return
+				case 'stage':
+					//return that._stageMatrix
+					reject(new Error('stage not supported', type))
+				default:
+					reject(new Error('Unsupported frame of reference type', type))
+			}
+		})
 	}
 
 	endSession(sessionId){
@@ -163,15 +223,18 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		if(session.baseLayer !== null){
 			this._wrapperDiv.removeChild(session.baseLayer.context.canvas)
 		}
+		if (session._useGeolocation) {
+			XRGeospatialAnchor.closeSession()
+		}
 	}
 
 	getViewport(sessionId, eye, layer, target){
 		// A single viewport that covers the entire screen
-		const { width, height } = layer.context.canvas
+		const { offsetWidth, offsetHeight } = layer.context.canvas
 		target.x = 0
 		target.y = 0
-		target.width = width
-		target.height = height
+		target.width = offsetWidth
+		target.height = offsetHeight
 		return true
 	}
 
@@ -193,6 +256,21 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	setBaseViewMatrix(matrix){
 		mat4.copy(this._headModelMatrix, matrix)
+
+		if (!this._baseFrameSet) {
+			this._baseFrameSet = true
+
+			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
+				const callback = this._frameOfRefRequestsWaiting[i];
+				try {
+					callback()
+				} catch(e) {
+					console.error("finalization of reference frame requests failed: ", e)
+				}
+			}
+			this._frameOfRefRequestsWaiting = []
+		
+		}
 	}
 
 	requestStageBounds(){
@@ -209,10 +287,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	onWindowResize(){
 		this._sessions.forEach((value, key) => {
-			var layer = value.baseLayer
-
-			layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth;
-			layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight;
+			// var layer = value.baseLayer
+			// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
+			// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 		})
 	}
 }

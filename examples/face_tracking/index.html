@@ -1,13 +1,22 @@
 <html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
 <head>
 	<title>ARKit face tracking example</title>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<link rel="stylesheet" href="../common.css"/>
-	<script src="../libs/three.js"></script>
+	<script src="../libs/three/three.js"></script>
+	<script src="../libs/three/loaders/GLTFLoader.js"></script>
     <script src="../libs/dat.gui.min.js"></script>
-	<script src="../libs/three-gltf-loader.js"></script>
     <script module src="../../dist/webxr.js"></script>
+    <style>
+        .dg { 
+            margin-top:30px !important;
+            }
+    </style>
+    <!-- <script module src="../../dist/webxr.js"></script> -->
 </head>
 <body>
     <div id="description">
@@ -26,17 +35,15 @@
 
         let device = null
         let session = null
-        let headFrameOfReference = null
         let eyeLevelFrameOfReference = null
-        let layer = null
-        let frameOfReference = null
         let engine = null
         
         var meshMap = new Map()
         
         // temporary working variables
         const workingMatrix = mat4.create()
-        const identity = mat4.identity(mat4.create())
+        const workingVec3 = vec3.create()
+
         var savedOrigin = [0,0,0]
         var savedDirection = [0,0,-1]
         
@@ -52,9 +59,7 @@
             glasses: true
         };
 
-
         var gui = new dat.GUI({ autoPlace: false });
-        document.body.appendChild(gui.domElement);
 
         gui.add( params, 'face', { 'Occlusion Only': 'occlusion', 'Oclussion & Mesh': 'both', 'Transparent Mesh': 'transparent' } );
         gui.add( params, 'ducky' );
@@ -68,29 +73,38 @@
         var material = null
         var wireMaterial = null
 
+
         var ducky = new THREE.Group()
         ducky.name = "Duck group"
-        loadGLTF('./DuckyMesh.glb').then(gltf => {
-            let duckyNode = gltf.scene
-            duckyNode.position.set(0, -0.25, -0.2)
-            duckyNode.scale.set(3,3,3)
-            ducky.add(duckyNode)
-            duckyCreated = true
-        }).catch((...params) =>{
-            console.error('could not load gltf', ...params)
-        })
+        var loader = new THREE.GLTFLoader().setPath( './' );
+        loader.load( 'DuckyMesh.glb',
+            function (gltf) {
+                let duckyNode = gltf.scene
+                duckyNode.position.set(0, -0.25, -0.2)
+                duckyNode.scale.set(3,3,3)
+                ducky.add(duckyNode)
+                duckyCreated = true
+            }, 
+            null,  // progress callback
+            function(e) {
+                console.error('could not load gltf', ...params)
+            })
 
+        loader.setPath('./glasses/')
         var glasses = new THREE.Group()
         glasses.name = "Glasses group"
-        loadGLTF('./glasses/glasses.gltf').then(gltf => {
-            let glassesNode = gltf.scene
-            glassesNode.position.set(0, 0.01, 0.06)
-            glassesNode.scale.set(0.0005,0.0005,0.0005)
-            glasses.add(glassesNode)
-            glassesCreated = true
-        }).catch((...params) =>{
-            console.error('could not load gltf', ...params)
-        })
+        loader.load( 'glasses.gltf',
+            function (gltf) {
+                let glassesNode = gltf.scene
+                glassesNode.position.set(0, 0.01, 0.06)
+                glassesNode.scale.set(0.0005,0.0005,0.0005)
+                glasses.add(glassesNode)
+                glassesCreated = true
+            }, 
+            null,  // progress callback
+            function(e) {
+                console.error('could not load gltf', ...params)
+            })
 
         function initializeScene() {
             ambientLight = engine.addAmbientLight()
@@ -109,8 +123,8 @@
             let worldInfo = frame.worldInformation
             if(worldInfo.estimatedLight){
                 let ambientIntensity = worldInfo.estimatedLight.ambientIntensity
-                ambientLight.intensity = ambientIntensity;
-                directionalLight.intensity = ambientIntensity * 0.5;
+                ambientLight.intensity = ambientIntensity * 0.5;
+                directionalLight.intensity = ambientIntensity * 0.1;
             }
             if(worldInfo.meshes){
                 meshMap.forEach(object => { object.seen = false })
@@ -160,17 +174,17 @@
 
                 meshMap.forEach(object => { 
                     if (!object.seen) {
-                        handleRemoveNode(object.worldMesh, object)
+                        handleRemoveNode(object)
                     } 
                 })
         }
 
         }
 
-        function handleRemoveNode(worldMesh, object) {
+        function handleRemoveNode(object) {
             object.geometry.dispose()
-            engine.removeAnchoredNode(worldMesh);
-            meshMap.delete(worldMesh.uid)
+            engine.removeAnchoredNode(object.faceMesh);
+            meshMap.delete(object.worldMesh.uid)
         }
 
         function handleUpdateNode(worldMesh, object) {
@@ -321,11 +335,16 @@
                         console.error('Session setup error', err)
                     })
                 document.getElementById('go-button').innerText = "End"
+                document.getElementById('go-button').style.display = 'none' 
+                document.body.appendChild(gui.domElement);
+
             } else {
                 session.end()
                 handleSessionEnded();
                 document.getElementById('description').style.display = 'block' 
+                document.getElementById('go-button').style.display = "block"
                 document.getElementById('go-button').innerText = "Go"
+                document.body.removeChild(gui.domElement);
             }
         }
 
@@ -361,31 +380,36 @@
             // Our custom engine class does hit testing at the end of each rAF 
             engine = new XREngine(canvas, glContext)
 
-            // head-model is the coordinate system that tracks the position of the display
-            session.requestFrameOfReference('head-model').then(frameOfReference =>{
-                headFrameOfReference = frameOfReference
-            })
-            .catch(err => {
-                console.error('Error finding head frame of reference', err)
-            })
-            // eye-level is the coordinate system of the ARKit tracking system 
-            session.requestFrameOfReference('eye-level').then(frameOfReference => {
-                eyeLevelFrameOfReference = frameOfReference
+            createRootNode().then(() => {
                 // Kick off rendering
                 session.requestAnimationFrame(handleAnimationFrame)
-            })
-            .catch(err => {
-                console.error('Error finding eye frame of reference', err)
             })
 
             initializeScene()
         }
 
+        async function createRootNode() {
+            let headFrameOfReference = await session.requestFrameOfReference('head-model')
+            eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+
+            // get the location of the device, and use it to create an 
+            // anchor with the identity orientation
+            headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
+            mat4.getTranslation(workingVec3, workingMatrix)
+            mat4.fromTranslation(workingMatrix, workingVec3)
+
+            let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
+            engine.addAnchoredNode(anchor, engine.root)
+            
+            return true
+        }
+
+
         ////////////////
         // render loop			
         function handleAnimationFrame(t, frame){
-            updateScene(frame)
             if(!session || session.ended) return
+            updateScene(frame)
             session.requestAnimationFrame(handleAnimationFrame)
 
             let pose = frame.getDevicePose(eyeLevelFrameOfReference)
@@ -396,12 +420,12 @@
 
             engine.startFrame()
             for (let view of frame.views) {
-                engine.render(
-                    session.baseLayer.getViewport(view),
-                    view.projectionMatrix,
-                    pose.getViewMatrix(view)
-                )
-                break
+                engine.preRender(
+						session.baseLayer.getViewport(view),
+						view.projectionMatrix,
+						pose.getViewMatrix(view)
+					)
+                engine.render()
             }
         }
 </script>

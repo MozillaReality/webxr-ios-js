@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+  <!-- Any copyright is dedicated to the Public Domain.
+			  http://creativecommons.org/publicdomain/zero/1.0/
+	-->
+    <head>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-77033033-2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'UA-77033033-2');
+    </script>
+
+    <title>WebXR Viewer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        /*
+        colors
+         */
+
+        /*https://ffp4g1ylyit3jdyti1hqcvtb-wpengine.netdna-ssl.com/wp-content/themes/frontierline/fonts/ZillaSlab-Regular.woff2*/
+
+
+        @font-face { font-family: 'Zilla Slab'; font-weight: normal; font-style: normal; src: url("https://ffp4g1ylyit3jdyti1hqcvtb-wpengine.netdna-ssl.com/wp-content/themes/frontierline/fonts/ZillaSlab-Regular.woff2") format("woff2"), url("https://ffp4g1ylyit3jdyti1hqcvtb-wpengine.netdna-ssl.com/wp-content/themes/frontierline/fonts/ZillaSlab-Regular.woff") format("woff"); }
+        @font-face { font-family: 'Zilla Slab'; font-weight: bold; font-style: normal; src: url("https://ffp4g1ylyit3jdyti1hqcvtb-wpengine.netdna-ssl.com/wp-content/themes/frontierline/fonts/ZillaSlab-Bold.woff2") format("woff2"), url("https://ffp4g1ylyit3jdyti1hqcvtb-wpengine.netdna-ssl.com/wp-content/themes/frontierline/fonts/ZillaSlab-Bold.woff") format("woff"); }
+        /*@font-face { font-family: 'Zilla Slab'; font-weight: normal; font-style: italic; src: url("fonts/ZillaSlab-RegularItalic.woff2") format("woff2"), url("fonts/ZillaSlab-RegularItalic.woff") format("woff"); }*/
+        /*@font-face { font-family: 'Zilla Slab'; font-weight: bold; font-style: italic; src: url("fonts/ZillaSlab-BoldItalic.woff2") format("woff2"), url("fonts/ZillaSlab-BoldItalic.woff") format("woff"); }*/
+        /*@font-face { font-family: 'Open Sans'; font-weight: normal; font-style: normal; src: url("fonts/opensans-regular.woff2") format("woff2"), url("fonts/opensans-regular.woff") format("woff"); }*/
+        /*@font-face { font-family: 'Open Sans'; font-weight: bold; font-style: normal; src: url("fonts/opensans-bold.woff2") format("woff2"), url("fonts/opensans-bold.woff") format("woff"); }*/
+
+
+        body, html {
+            background-color: #ffffff;
+            color: #221E1D;
+            font-family: "Zilla Slab", "Open Sans", X-LocaleSpecific, sans-serif;
+            /*font-size: 12px;*/
+            line-height: 1.3em;
+        }
+
+        h1, h2, h3 {
+            background-color: #221E1D;
+            color: white;
+            padding: 0.25rem 0.25rem 0.5rem 0.4rem;
+            font-weight: normal;
+            margin: 2rem 0 0 0;
+        }
+
+        a {
+            color: #00a7e0;
+        }
+
+        li {
+            border: 1px solid #ccc;
+            background-color: #eee;
+        }
+
+        /* layout */
+
+        body, html {
+            padding: 0;
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            padding-bottom: 200px;
+        }
+
+        section {
+            margin: 0.5rem;
+        }
+        section > * {
+            margin-left: 0.5rem;
+            margin-right: 0.5rem;
+        }
+
+        ul li img {
+            width: 100%;
+            height: auto;
+            margin:0;
+            padding:0;
+        }
+
+        .intro {
+            max-width: 40em;
+            padding: 0.5rem 0;
+        }
+
+        .source {
+            font-size: 0.8rem;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        li a {
+            font-size: 1.3rem;
+        }
+
+        li p {
+            margin-top: 0.5rem;
+        }
+
+        ul {
+            list-style: none;
+            margin:0;
+            padding:0;
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px,1fr));
+        }
+        li {
+            display: flex;
+            flex-direction: column;
+            padding: 0.5em;
+            margin: 0.5rem;
+            justify-content: flex-start;
+        }
+        li a.img {
+            flex: 1;
+            justify-self: flex-end;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+<section>
+    <h1>WebXR Viewer</h1>
+
+    <p class="intro">
+        Help Mozilla Research by trying out the WebXR viewer, an WebXR-enabled browser for iOS.
+    </p>
+
+    <p class="intro">
+        Below you will find examples of WebXR experiences. If you are a developer, click the source code links to see how to use <a href="https://github.com/immersive-web/webxr">WebXR</a> to create your own AR experiences.
+    </p>
+</section>
+<section>
+    <h2>Standard Examples</h2>
+    <ul>
+        <li>
+            <a href="examples/ar_simplest/">Simplest AR</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/ar_simplest/index.html">source</a>
+            <p>Use Three.js to position the Utah Teapot in an augmented reality scene.</p>
+            <a  class="img" href="examples/ar_simplest/">
+                <img src="examples/ar_simplest/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+        <li>
+            <a href="examples/boombox/">Boom box</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/boombox/index.html">source</a>
+            <p>A shiny boom box in an environment map</p>
+            <a  class="img" href="examples/boombox/">
+                <img src="examples/boombox/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+    </ul>
+    <h2>Proposed Additions: Anchors and Hit Testing</h2>
+    <ul>
+        <li>
+            <a href="examples/ar_anchors/">Anchors</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/ar_anchors/index.html">source</a>
+            <p>Position boxes in space and receive updated positions using ARKit anchors.</p>
+            <a  class="img" href="examples/ar_anchors/">
+                <img src="examples/ar_anchors/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+
+        <li>
+            <a href="examples/hit_test/">Hit testing</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/hit_test/index.html">source</a>
+            <p>Find anchors by tapping to search for surfaces.</p>
+            <a  class="img" href="examples/hit_test/">
+                <img src="examples/hit_test/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+
+        <li>
+            <a href="examples/peoples/">Peoples</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/peoples/index.html">source</a>
+            <p>Place animated people on surfaces.</p>
+            <a  class="img" href="examples/peoples/">
+                <img src="examples/peoples/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+        <li>
+            <a href="examples/reticle/">Reticle</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/reticle/index.html">source</a>
+            <p>Place a reticle on surfaces.</p>
+            <a class="img" href="examples/reticle/">
+                <img src="examples/reticle/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+    </ul>
+    <h2>Proposed Additions: Light Estimation, GeoAlignment, and World Geometry</h2>
+    <ul>
+        <li>
+            <a href="examples/light/">Light</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/light/index.html">source</a>
+            <p>Place a reticle on surfaces with light estimation.</p>
+            <a  class="img" href="examples/light/">
+                <img src="examples/light/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+        <li>
+            <a href="examples/geospatial/">Geospatial Anchors</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/geospatial/index.html">source</a>
+            <p>Place a cube north of the user</p>
+            <a  class="img" href="examples/geospatial/">
+                <img src="examples/geospatial/screenshot.jpeg" width="300" height="200"/>
+            </a>
+        </li>
+        <li>
+            <a href="examples/sensing/">World Sensing</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/sensing/index.html">source</a>
+            <p>Show world sensing data from WebXR.</p>
+            <a class="img" href="examples/sensing/">
+                <img src="examples/sensing/screenshot.jpg" width="300" height="200"/>
+            </a>
+        </li>
+    </ul>
+    <h2>iOS Specific (non-standard) Experiments</h2>
+    <ul>
+        <li>
+            <a href="examples/face_tracking/">Face Tracking</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/face_tracking/index.html">source</a>
+            <p>Face tracker.</p>
+            <a class="img" href="examples/face_tracking/">
+                <img src="examples/face_tracking/screenshot.jpg" width="300" height="200"/>
+            </a>
+        </li>
+        <li>
+            <a href="examples/image_detection/">Image Detection</a>
+            <a class="source" href="https://github.com/mozilla-mobile/webxr-ios-js/blob/master/examples/image_detection/index.html">source</a>
+            <p>Image detector</p>
+            <a  class="img" href="examples/image_detection/">
+                <img src="examples/image_detection/screenshot.jpg" width="300" height="200"/>
+            </a>
+        </li>
+    </ul>
+</section>
+</body>
+</html>
