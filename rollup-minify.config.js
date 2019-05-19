@@ -6,32 +6,48 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
  */
 
-//import fs from 'fs';
-//import path from 'path';
+import fs from 'fs';
+import path from 'path';
 import replace from 'rollup-plugin-replace';
 import cleanup from 'rollup-plugin-cleanup';
 import commonjs from 'rollup-plugin-commonjs';
 import resolve from 'rollup-plugin-node-resolve';
 import uglify from "rollup-plugin-uglify";
-//const banner = fs.readFileSync(path.join(__dirname, 'licenses.txt'));
+const banner = fs.readFileSync(path.join(__dirname, 'licenses.txt'));
 
-export default {
-  input: 'src/webxr.js',
-  output: {
-  //  banner: banner
-    file: './dist/webxr-min.js',
-    format: 'umd',
-    name: 'WebXRPolyfill'
+export default [
+  {
+    input: 'src/webxr.js',
+    output: {
+    //  banner: banner
+      file: './dist/webxr-min.js',
+      format: 'umd',
+      name: 'WebXRPolyfill'
+    },
+    plugins: rollupPlugins() 
   },
-  plugins: [
-    replace({
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    }),
-    commonjs(),
-    resolve(),
-    cleanup({
-      comments: 'none',
-    }),
-    uglify()
-  ]
-};
+  {
+    input: 'src/extensions/XRGeospatialAnchor.js',
+    output: {
+      file: './dist/webxr-geospatial-min.js',
+      format: 'umd',
+      name: 'XRGeospatialAnchor',
+      banner: banner
+    },
+    plugins: rollupPlugins() 
+  }]
+  
+
+function rollupPlugins() {
+  return [
+      replace({
+        'process.env.NODE_ENV': JSON.stringify('production'),
+      }),
+      commonjs(),
+      resolve(),
+      cleanup({
+        comments: 'none',
+      }),
+      uglify()
+    ];
+}

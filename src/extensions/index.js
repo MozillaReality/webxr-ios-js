@@ -15,7 +15,6 @@ import XRLightEstimate from './XRLightEstimate'
 import XRMesh from './XRMesh'
 import XRPlaneMesh from './XRPlaneMesh'
 import XRVideoFrame from './XRVideoFrame'
-import XRGeospatialAnchor from './XRGeospatialAnchor'
 
 export default {
     XRAnchor,
@@ -26,6 +25,5 @@ export default {
     XRLightEstimate,
     XRMesh,
     XRPlaneMesh,
-    XRVideoFrame,
-    XRGeospatialAnchor
+    XRVideoFrame
 }

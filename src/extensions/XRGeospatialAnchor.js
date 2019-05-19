@@ -9,33 +9,65 @@ import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 import * as mat3 from 'gl-matrix/src/gl-matrix/mat3'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
 import MapzenTerrariumTerrainProvider from '../lib/MapzenTerrariumTerrainProvider.js'
-import XRAnchor from './XRAnchor.js'
-import XRDevice from 'webxr-polyfill/src/api/XRDevice'
+// import XRAnchor from './XRAnchor.js'
+// import XRDevice from 'webxr-polyfill/src/api/XRDevice'
+import GLOBALS from 'webxr-polyfill/src/lib/global.js'
 
+
+
+XRAnchor = GLOBALS.XRAnchor
+XRDevice = GLOBALS.XRDevice
 
 /* ** path the XRSession
 */ 
-var __XRDevice_requestSession = XRDevice.prototype.requestSession
-XRDevice.prototype.requestSession = async function (options) {
-    let bindrequest = __XRDevice_requestSession.bind(this)
-    let session = await bindrequest(options)
+function _patchXRDevice() {
+    var __XRDevice_requestSession = XRDevice.prototype.requestSession
+    XRDevice.prototype.requestSession = async function (options) {
+        let bindrequest = __XRDevice_requestSession.bind(this)
+        let session = await bindrequest(options)
 
-    // must have Cesium loaded by the time you request a session or Geo won't work
-    if (window.hasOwnProperty("Cesium") && options.alignEUS && options.geolocation) {
-        const onSessionEnd = () => {
-            _XRsession = null
-            if (_watchID) {
-                navigator.geolocation.clearWatch(_watchID);
-                _watchID = 0
+        // must have Cesium loaded by the time you request a session or Geo won't work
+        if (window.hasOwnProperty("Cesium") && options.alignEUS && options.geolocation) {
+            const onSessionEnd = () => {
+                _XRsession = null
+                if (_watchID) {
+                    navigator.geolocation.clearWatch(_watchID);
+                    _watchID = 0
+                }
+                resetState()
+                session.removeEventListener('end', onSessionEnd);        
             }
-            resetState()
-            session.removeEventListener('end', onSessionEnd);        
+            session._useGeolocation = true
+            
+            session.addEventListener('end', onSessionEnd);
+            await useSession(session)
         }
-        
-        session.addEventListener('end', onSessionEnd);
-        await useSession(session)
+        return session
     }
-    return session
+
+    var __XRDevice_endSession = XRDevice.prototype.endSession
+    XRDevice.prototype.endSession = function(sessionId) {
+        let bindrequest = __XRDevice_endSession.bind(this)
+        let ret = bindrequest(sessionId)
+        if (session._useGeolocation) {
+            XRGeospatialAnchor.closeSession()
+        }
+        return ret
+    }
+
+    var __XRDevice_supportsSession = XRDevice.prototype.supportsSession
+    XRDevice.prototype.supportsSession = function (options={}) {
+        let bindrequest = __XRDevice_supportsSession.bind(this)
+        let newOptions = Object.assign({}, options)
+        var _wantsGeo = false
+        if (options.hasOwnProperty("geolocation")) {
+            _wantsGeo = true
+            delete newOptions.geolocation
+        }
+        let ret = bindrequest(options)
+
+        return  ret && (!_wantsGeo || options.hasOwnProperty("alignEUS")) 
+    }
 }
 
 async function useSession(session) { 
@@ -369,9 +401,6 @@ export default class XRGeospatialAnchor extends XRAnchor {
         this._updateLocalCartesian()
     }
 
-    get cartesian() { return this._cartesian}
-    get cartographic() { return this._cartographic}
-
     _newGeoAnchor(event) {
         event.oldAnchor.removeEventListener("newGeoAnchor", this._newGeoOriginNotifier)
         event.oldAnchor.removeEventListener("updateCartesian", this._updateCartesianNotifier)
@@ -403,6 +432,25 @@ export default class XRGeospatialAnchor extends XRAnchor {
         // this location from the geoAnchor.  We use just the position because these are points, and both of these
         // assume the base coordinate system is aligned with EUS
         super.updateModelMatrix(_scratchMat4, currentGeoOriginAnchor.timeStamp)
+    }
+
+    get cartographic () {
+        if (this._cartographic == null) {
+            this._cartographic = Cesium.Cartographic.fromCartesian(this._cartesian)
+        }
+        return this._cartographic
+    }
+    set cartographic (cartographic) {
+        this._cartographic = cartographic
+        this._cartesian = Cesium.Cartographic.toCartesian(cartographic)
+        this._updateLocalCartesian()
+    }
+
+    get cartesian () { return this._cartesian}
+    set cartesian (cartesian) {
+        this._cartesian = cartesian
+        this._cartographic = null;  // expensive to convert, do it lazily since we don't need it otherwise
+        this._updateLocalCartesian()
     }
 
     // for debugging
@@ -549,4 +597,11 @@ export default class XRGeospatialAnchor extends XRAnchor {
             })
         })
     }
+}
+
+if (window["XRGeospatialAnchr"] !== undefined) {
+    console.warn(`XRGeospatialAnchor already defined on global.`);
+} else {
+    _patchXRDevice()
+    window["XRGeospatialAnchor"] = XRGeospatialAnchor;
 }
