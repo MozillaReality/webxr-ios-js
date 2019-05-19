@@ -14,13 +14,15 @@ import MapzenTerrariumTerrainProvider from '../lib/MapzenTerrariumTerrainProvide
 import GLOBALS from 'webxr-polyfill/src/lib/global.js'
 
 
-
-XRAnchor = GLOBALS.XRAnchor
-XRDevice = GLOBALS.XRDevice
+var XRAnchor = null
+var XRDevice = null
 
 /* ** path the XRSession
 */ 
 function _patchXRDevice() {
+    XRAnchor = GLOBALS.XRAnchor
+    XRDevice = GLOBALS.XRDevice
+
     var __XRDevice_requestSession = XRDevice.prototype.requestSession
     XRDevice.prototype.requestSession = async function (options) {
         let bindrequest = __XRDevice_requestSession.bind(this)
