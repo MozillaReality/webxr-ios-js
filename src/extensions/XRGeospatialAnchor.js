@@ -56,7 +56,7 @@ function _patchXRDevice() {
     }
 
     var __XRDevice_supportsSession = XRDevice.prototype.supportsSession
-    XRDevice.prototype.supportsSession = function (options={}) {
+    XRDevice.prototype.supportsSession = async function (options={}) {
         let bindrequest = __XRDevice_supportsSession.bind(this)
         let newOptions = Object.assign({}, options)
         var _wantsGeo = false
@@ -64,9 +64,13 @@ function _patchXRDevice() {
             _wantsGeo = true
             delete newOptions.geolocation
         }
-        let ret = bindrequest(options)
-
-        return  ret && (!_wantsGeo || options.hasOwnProperty("alignEUS")) 
+        let ret = await bindrequest(options)  // if not supported, will throw
+        
+        if (!_wantsGeo || options.hasOwnProperty("alignEUS")) {
+            return true
+        } else {
+            throw(null)
+        }
     }
 }
 
