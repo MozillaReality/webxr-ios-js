@@ -603,9 +603,9 @@ export default class XRGeospatialAnchor extends XRAnchor {
     }
 }
 
-if (window["XRGeospatialAnchr"] !== undefined) {
+if (GLOBALS["XRGeospatialAnchr"] !== undefined) {
     console.warn(`XRGeospatialAnchor already defined on global.`);
-} else {
+} else if (GLOBALS["XRAnchor"] !== undefined && GLOBALS["XRDevice"] !== undefined) {
     _patchXRDevice()
     window["XRGeospatialAnchor"] = XRGeospatialAnchor;
 }
