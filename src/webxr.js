@@ -33,12 +33,17 @@ WebXRPolyfill.prototype._patchRequestDevice = function(){
     })
 }
 
+let mobileIndex =  navigator.userAgent.indexOf("Mobile/") 
+let isWebXRViewer = navigator.userAgent.indexOf("WebXRViewer") !== -1 ||
+			((navigator.userAgent.indexOf("iPhone") !== -1 ||  navigator.userAgent.indexOf("iPad") !== -1) 
+				&& mobileIndex !== -1 && navigator.userAgent.indexOf("AppleWebKit") !== -1 
+				&& navigator.userAgent.indexOf(" ", mobileIndex) === -1)
+
 // Install the polyfill IF AND ONLY IF we're running in the WebXR Viewer
-const xrPolyfill =  navigator.userAgent.indexOf("WebXRViewer") !== -1 ? 
-	new WebXRPolyfill(null, {
+const xrPolyfill =  !isWebXRViewer ? null : new WebXRPolyfill(null, {
 	webvr: false,
 	cardboard: false
-}) : null
+})
 
 /*
 Now install a few proposed AR extensions to the WebXR Device API:
