@@ -33,8 +33,14 @@ WebXRPolyfill.prototype._patchRequestDevice = function(){
     })
 }
 
-// Install the polyfill
-const xrPolyfill = new WebXRPolyfill(null, {
+let mobileIndex =  navigator.userAgent.indexOf("Mobile/") 
+let isWebXRViewer = navigator.userAgent.indexOf("WebXRViewer") !== -1 ||
+			((navigator.userAgent.indexOf("iPhone") !== -1 ||  navigator.userAgent.indexOf("iPad") !== -1) 
+				&& mobileIndex !== -1 && navigator.userAgent.indexOf("AppleWebKit") !== -1 
+				&& navigator.userAgent.indexOf(" ", mobileIndex) === -1)
+
+// Install the polyfill IF AND ONLY IF we're running in the WebXR Viewer
+const xrPolyfill =  !isWebXRViewer ? null : new WebXRPolyfill(null, {
 	webvr: false,
 	cardboard: false
 })
@@ -306,6 +312,6 @@ function _installExtensions(){
 
 }
 
-if (xrPolyfill.injected) {
+if (xrPolyfill && xrPolyfill.injected) {
 	_installExtensions()
 }
