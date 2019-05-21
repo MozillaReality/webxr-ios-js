@@ -13,14 +13,15 @@ import MapzenTerrariumTerrainProvider from '../lib/MapzenTerrariumTerrainProvide
 // import XRDevice from 'webxr-polyfill/src/api/XRDevice'
 import GLOBALS from 'webxr-polyfill/src/lib/global.js'
 
-
 var XRAnchor = null
 var XRDevice = null
+
+if (GLOBALS["XRAnchor"] !== undefined) var XRAnchor = GLOBALS.XRAnchor
+if (GLOBALS["XRDevice"] !== undefined) var XRDevice = GLOBALS.XRDevice
 
 /* ** path the XRSession
 */ 
 function _patchXRDevice() {
-    XRAnchor = GLOBALS.XRAnchor
     XRDevice = GLOBALS.XRDevice
 
     var __XRDevice_requestSession = XRDevice.prototype.requestSession
