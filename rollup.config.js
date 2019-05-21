@@ -15,22 +15,38 @@ import commonjs from 'rollup-plugin-commonjs';
 import resolve from 'rollup-plugin-node-resolve';
 const banner = fs.readFileSync(path.join(__dirname, 'licenses.txt'));
 
-export default {
-  input: 'src/webxr.js',
-  output: {
-    file: './dist/webxr.js',
-    format: 'umd',
-    name: 'WebXRPolyfill',
-    banner: banner
+export default [
+  {
+    input: 'src/webxr.js',
+    output: {
+      file: './dist/webxr.js',
+      format: 'umd',
+      name: 'WebXRPolyfill',
+      banner: banner
+    },
+    plugins: rollupPlugins() 
   },
-  plugins: [
-    replace({
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    }),
-    commonjs(),
-    resolve(),
-    cleanup({
-      comments: 'none',
-    })
-  ]
-};
+  {
+    input: 'src/extensions/XRGeospatialAnchor.js',
+    output: {
+      file: './dist/webxr-geospatial.js',
+      format: 'umd',
+      name: 'XRGeospatialAnchor',
+      banner: banner
+    },
+    plugins: rollupPlugins() 
+  }]
+  
+
+function rollupPlugins() {
+  return [
+      replace({
+        'process.env.NODE_ENV': JSON.stringify('production'),
+      }),
+      commonjs(),
+      resolve(),
+      cleanup({
+        comments: 'none',
+      })
+    ];
+}

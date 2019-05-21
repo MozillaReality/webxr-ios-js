@@ -13,7 +13,6 @@ import {throttle, throttledConsoleLog} from '../lib/throttle.js'
 
 import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
-import XRGeospatialAnchor from '../extensions/XRGeospatialAnchor.js';
 
 
 export default class ARKitDevice extends PolyfilledXRDevice {
@@ -78,11 +77,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	supportsSession(options={}){
 		// true if:
-		//  not (geolocation and not alignEUS)  ==>  can only use geolocation if aligneus is true
 		//  not immersive
-		return  !(!options.hasOwnProperty("alignEUS") && 
-				   options.hasOwnProperty("geolocation") && 
-				  !options.hasOwnProperty("immersive"))
+		return !options.hasOwnProperty("immersive") || !options.immersive
 	}
 
 	async requestSession(options={}){
@@ -109,10 +105,6 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		if (options.hasOwnProperty("alignEUS")) {
 			ARKitOptions.alignEUS = options.alignEUS
 		}
-		var geolocation = false
-		if (options.hasOwnProperty("geolocation") && options.hasOwnProperty("alignEUS")) {
-			geolocation = true
-		}
 		let initResult = await this._arKitWrapper.waitForInit().then(() => {
 		}).catch((...params) => {
 			console.error("app failed to initialize: ", ...params)
@@ -124,10 +116,6 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			this._sessions.set(session.id, session)
 			this._activeSession = session
 
-			session._useGeolocation = geolocation
-			if (geolocation) {
-//				XRGeospatialAnchor.useSession(session)
-			}
 
 			return Promise.resolve(session.id)
 		}).catch((...params) => {
@@ -222,9 +210,6 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		}
 		if(session.baseLayer !== null){
 			this._wrapperDiv.removeChild(session.baseLayer.context.canvas)
-		}
-		if (session._useGeolocation) {
-			XRGeospatialAnchor.closeSession()
 		}
 	}
 
