@@ -285,23 +285,83 @@ function updateECEFToLocal(cartesian) {
 
 var _useEstimatedElevationForViewer = false
 var _savedViewHeight = 0
-async function _useEstimatedElevation(setting) {
+var _savedHeightOffset = 0
+
+async function _useEstimatedElevation(setting, offsetFromGround) {
     let sleep = function (time) {
         return new Promise((resolve) => setTimeout(resolve, time));
     }
 
     if (_useEstimatedElevationForViewer != setting) {
+        // if we are changing the setting, we'll just create a new anchor
         _useEstimatedElevationForViewer = setting
+
+        _savedHeightOffset = offsetFromGround
 
         // if we have a geoOrigin, update it.  Otherwise, the right thing will happen
         if (_geoOrigin) {
             if (_useEstimatedElevationForViewer) {
-                _geoOrigin.coords.altitude = _saveViewHeight
+                _geoOrigin.coords.altitude = _savedViewHeight
             }
             while (_updateOrigin) {
                 await sleep(1)
 
                 await updatePositionCallback(_geoOrigin, true)
+            }
+        }
+    } else if (_useEstimatedElevation) {
+        // if we are already using estimated elevation, then we want to reset
+        // the elevation of the anchor so that the estimated elevation is correct 
+        // where we are
+        _updateOffsetFromGround(offsetFromGround)
+    }
+}
+
+// the idea here is that as we move around the world, if we're using the estimated elevation
+// our elevation may change (e.g, going from up on a structure to the ground) such that 
+// the _other_ stuff in the world is now wrong.  
+async function _updateOffsetFromGround (offsetFromGround) {
+    if (_useEstimatedElevationForViewer) {
+        var offsetDiff = offsetFromGround - _savedHeightOffset;
+
+        _savedHeightOffset += offsetDiff
+
+        if (_geoOrigin) {
+            _geoOrigin.coords.altitude += offsetDiff
+
+            // need to determine my altitude where I am right now, computed 
+            // from elevation estimate
+            let _headLevelFrameOfReference = await _XRsession.requestFrameOfReference('head-model')
+            _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference, _scratchMat4)
+            mat4.getTranslation(_scratchVec3, _scratchMat4)
+
+            // set the Y at the ground below the device
+            _scratchVec3.y -= offsetFromGround
+
+            // convert to FIXED, then cartesian, then get the estimated altitude
+            vec3.transformMat4(_scratch2Vec3, _scratchVec3, _localToFixed)
+            _scratchCartesian = Cesium.Cartesian3.unpack(_scratch2Vec3, 0, _scratchCartesian)
+            let cart = Cesium.Cartographic.fromCartesian(_scratchCartesian)
+            await updateHeightFromTerrain(cart)
+            
+            // then determine my altitude based on the current _geoOrigin/etc and my
+            // position in the AR maps relative to it
+            mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
+
+            // then adjust the _geoOrigin such that my computed altitude from it
+            // matches my altitude if I recreated the anchor where I am
+            let diffXR = _scratch2Vec3.y - _scratchVec3.y
+            let diffGeo = cart.height - _geoOrigin.coords.altitude
+
+            // need to move the local cartesian up or down by the offset
+            vec3.set(_scratchVec3, _geoCartesian.x, _geoCartesian.y, _geoCartesian.z)
+            vec3.transformMat4(_scratchMat4, _scratchVec3, _fixedToLocal)
+            _scratchVec3.y -= (diffGeo - diffXR)
+            vec3.transformMat4(_scratchVec3, _geoCartesian, _localToFixed)
+
+            // now that we've updated, if we're not 
+            if (!_overrideGeolocation) {
+                updateGeoCartesian(_geoCartesian, _geoOriginAnchor)
             }
         }
     }
@@ -338,7 +398,7 @@ async function updatePositionCallback (position, force=false)
                 _savedViewHeight = position.coords.altitude
                 _scratchCartographic = Cesium.Cartographic.fromDegrees(position.coords.longitude, position.coords.latitude, position.coords.altitude)
                 await updateHeightFromTerrain(_scratchCartographic)
-                position.coords.altitude = _scratchCartographic.height
+                position.coords.altitude = _scratchCartographic.height + _savedHeightOffset
             }
 
             // get a new Anchor right where the device is right now
@@ -492,8 +552,12 @@ export default class XRGeospatialAnchor extends XRAnchor {
         })
     }
 
-    static useEstimatedElevation(setting) {
-        _useEstimatedElevation(setting)
+    static useEstimatedElevation(setting, offsetFrom=0) {
+        _useEstimatedElevation(setting, offsetFromGround)
+    }
+
+    static updateOffsetFromGround(offsetFromGround) {
+        _updateOffsetFromGround(offsetFromGround)
     }
 
     // we can override the geo location, orientation, or both

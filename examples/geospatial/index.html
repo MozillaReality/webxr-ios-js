@@ -41,7 +41,10 @@
 			textBox.setAttribute('id', 'text-box')
 			textBox.setAttribute('class', 'text-box')
 			//textBox.style.visibility = 'hidden'
-			textBox.innerText = 'Waiting to start ...'
+
+			textBox.myText = '<p>Waiting to start ...</p>'
+			textBox.innerHTML = textBox.myText
+
 			document.body.appendChild(textBox)
 
 			var raycaster = new THREE.Raycaster();
@@ -100,15 +103,20 @@
 						let intersection = intersects.length ? intersects[0] : null
 						if (intersection) {
 							console.log("hit box: " + intersection.object.geoName)
-							textBox.innerText = 'At ' +  intersection.object.geoName + " box"
+							textBox.myText = 'At ' +  intersection.object.geoName + " box"
 							moveGeoOrigin(intersection)
 						} else {
 							console.log("miss, going back to device geolocation")
-							textBox.innerText = 'At device location'
+							textBox.myText = 'At device location'
 							clearGeoOrigin()
 						}
 					}
 				}
+				let deviceCarto = XRGeospatialAnchor.getDeviceCartographic()
+				let txt = textBox.myText + "<p>device altitude " + carto.height + "</p>" 
+				let defElev = XRGeospatialAnchor.getDefaultElevation(deviceCarto)
+				let txt = txt + textBox.myText + "<p>estimated altitude " + carto.height + "</p>"
+				textBox.innerHTML = txt 
 			}
 
 			function updateForView() {
