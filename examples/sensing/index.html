@@ -151,7 +151,7 @@
                         index.setArray(worldMesh.triangleIndices);
                         index.needsUpdate = true;
                     }
-                    if (worldMesh.vertexNormalsChanged && worldMap.vertexNormals.length > 0) {
+                    if (worldMesh.vertexNormalsChanged && worldMesh.vertexNormals.length > 0) {
                         // normals are optional
                         let normals = object.threeMesh.geometry.attributes.normals
                         if (normals.array.length != worldMesh.vertexNormals) {
