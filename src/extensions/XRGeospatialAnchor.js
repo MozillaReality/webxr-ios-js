@@ -552,7 +552,7 @@ export default class XRGeospatialAnchor extends XRAnchor {
         })
     }
 
-    static useEstimatedElevation(setting, offsetFrom=0) {
+    static useEstimatedElevation(setting, offsetFromGround=0) {
         _useEstimatedElevation(setting, offsetFromGround)
     }
 

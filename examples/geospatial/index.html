@@ -80,6 +80,27 @@
 			hudNode.visible = false
 			const HUD_Z = 0.2  // 2cm in front of display
 
+			updateLoop()
+
+			function sleep (time) {
+		        return new Promise((resolve) => setTimeout(resolve, time));
+    		}
+
+			XRGeospatialAnchor.useEstimatedElevation(true, 1.3)
+
+			async function updateLoop () {
+				let deviceCarto = await XRGeospatialAnchor.getDeviceCartographic()
+				let txt = textBox.myText + "<p>device altitude " + deviceCarto.height + "</p>" 
+				let defElev = await XRGeospatialAnchor.getDefaultElevation(deviceCarto)
+				txt = txt + textBox.myText + "<p>estimated altitude " + defElev + "</p>"
+				textBox.innerHTML = txt 
+
+				XRGeospatialAnchor.useEstimatedElevation(true, 1.3)
+
+				await sleep(100)
+				setTimeout(() => updateLoop(), 1)
+			}
+
 			function updateScene() {
 				const deltaTime = clock.getDelta()
     			//const elapsedTime = clock.getElapsedTime()
@@ -112,11 +133,6 @@
 						}
 					}
 				}
-				let deviceCarto = XRGeospatialAnchor.getDeviceCartographic()
-				let txt = textBox.myText + "<p>device altitude " + carto.height + "</p>" 
-				let defElev = XRGeospatialAnchor.getDefaultElevation(deviceCarto)
-				let txt = txt + textBox.myText + "<p>estimated altitude " + carto.height + "</p>"
-				textBox.innerHTML = txt 
 			}
 
 			function updateForView() {
