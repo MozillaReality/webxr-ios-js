@@ -184,9 +184,8 @@ function resetState() {
 /***
  * get altitude for LL's with no A
  */
-var _altScratchCart = null
 async function getAltitude(cart) {
-    _altScratchCart = Cesium.Cartographic.clone(cart, _altScratchCart)
+    var _altScratchCart = Cesium.Cartographic.clone(cart, _altScratchCart)
     await updateHeightFromTerrain(_altScratchCart)
     return _altScratchCart.height
 
@@ -216,7 +215,7 @@ function updateHeightFromTerrain(cartographic) {
 /*** 
  * ensure our cartesian's have altitude
  */
-async function cartesianToFixed(longitude, latitude, altitude=null) {
+async function cartographicToFixed(longitude, latitude, altitude=null) {
     if (!altitude) {
         let cart = Cesium.Cartographic.fromDegrees(longitude,latitude)
         altitude = await getAltitude(cart)
@@ -285,18 +284,23 @@ function updateECEFToLocal(cartesian) {
 
 var _useEstimatedElevationForViewer = false
 var _savedViewHeight = 0
-async function _useEstimatedElevation(setting) {
+var _savedHeightOffset = 0
+
+async function _useEstimatedElevation(setting, offsetFromGround) {
     let sleep = function (time) {
         return new Promise((resolve) => setTimeout(resolve, time));
     }
 
     if (_useEstimatedElevationForViewer != setting) {
+        // if we are changing the setting, we'll just create a new anchor
         _useEstimatedElevationForViewer = setting
+
+        _savedHeightOffset = offsetFromGround
 
         // if we have a geoOrigin, update it.  Otherwise, the right thing will happen
         if (_geoOrigin) {
             if (_useEstimatedElevationForViewer) {
-                _geoOrigin.coords.altitude = _saveViewHeight
+                _geoOrigin.coords.altitude = _savedViewHeight
             }
             while (_updateOrigin) {
                 await sleep(1)
@@ -304,15 +308,112 @@ async function _useEstimatedElevation(setting) {
                 await updatePositionCallback(_geoOrigin, true)
             }
         }
+    } else if (_useEstimatedElevation) {
+        // if we are already using estimated elevation, then we want to reset
+        // the elevation of the anchor so that the estimated elevation is correct 
+        // where we are
+        _updateOffsetFromGround(offsetFromGround)
+    }
+}
+
+// the idea here is that as we move around the world, if we're using the estimated elevation
+// our elevation may change (e.g, going from up on a structure to the ground) such that 
+// the _other_ stuff in the world is now wrong.  
+async function _updateOffsetFromGround (offsetFromGround) {
+    if (_useEstimatedElevationForViewer) {
+        var offsetDiff = offsetFromGround - _savedHeightOffset;
+
+        _savedHeightOffset += offsetDiff
+
+        if (_geoOrigin) {
+            _geoOrigin.coords.altitude += offsetDiff
+
+            // need to determine my altitude where I am right now, computed 
+            // from elevation estimate
+            let _headLevelFrameOfReference = await _XRsession.requestFrameOfReference('head-model')
+            _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference, _scratchMat4)
+            // position of device in ARKit coords
+            mat4.getTranslation(_scratchVec3, _scratchMat4)
+
+            // position of anchor
+            mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
+
+            // device relative to anchor
+            vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
+
+            // the Y at the device, in WebXR coordinates
+            var yAtDevice = _scratchVec3[1]
+            
+            // convert to FIXED relative to the geoAnchor, then cartesian
+            // then get the estimated altitude of the location
+            // where the device currently is
+            vec3.transformMat4(_scratch2Vec3, _scratchVec3, _geoOrigin._localToFixed)
+            _scratchCartesian = Cesium.Cartesian3.unpack(_scratch2Vec3, 0, _scratchCartesian)
+            
+            // cartographic of device, relative to anchor
+            let cart = Cesium.Cartographic.fromCartesian(_scratchCartesian)
+            // console.log("carto height at my pos: ", cart.height)
+
+            // default elevation of device, relative to anchor
+            let defaultHeight = await getAltitude(cart) + offsetFromGround
+            
+            // then determine the altitude in XR coordinates of the _geoOrigin/etc
+            //mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
+
+            // different in Y of XR coordinates between the _geoOrigin and device, currently
+            let diffXR = yAtDevice //_scratch2Vec3[1] - yAtDevice
+
+            // different between the default height I'm at now, and the default height of device at the origin
+            let diffGeo = defaultHeight - _geoOrigin.coords.altitude
+
+            // then adjust the _geoOrigin such that my computed altitude from it
+            // matches my altitude if I recreated the anchor where I am
+
+            // need to move the local cartesian up or down by the offset
+            //let cartesian = Cesium.Cartesian3.fromDegrees(_geoOrigin.coords.longitude, _geoOrigin.coords.latitude, _geoOrigin.coords.altitude)
+
+            // this should be 0,0,0
+            // vec3.set(_scratchVec3, _geoOrigin.cartesian.x, _geoOrigin.cartesian.y, _geoOrigin.cartesian.z)
+            // vec3.transformMat4(_scratchVec3, _scratchVec3, _geoOrigin._fixedToLocal)
+            _scratchVec3[0] = _scratchVec3[2] = 0
+            _scratchVec3[1] = offsetDiff
+            _scratchVec3[1] += (diffGeo - diffXR)
+
+            //_geoOrigin.coords.altitude -= (diffGeo - diffXR)
+
+            // console.log("estimated height: ", defaultHeight)
+            // console.log("current XR height: ", yAtDevice)
+            // console.log("XR height diff between device and geoAnchor: ", diffXR)
+            // console.log("geo height diff between device and geoAnchor: ", diffGeo)
+            // console.log("new geoAnchor altitude: ", _scratchVec3[1])
+
+            vec3.transformMat4(_geoCartesian, _scratchVec3, _geoOrigin._localToFixed)
+
+            // now that we've updated, if we're not 
+            if (!_overrideGeolocation) {
+                updateGeoCartesian(_geoCartesian, _geoOriginAnchor)
+                // console.log("_localToFixed: ", _localToFixed[12], _localToFixed[13], _localToFixed[14])
+                // _headLevelFrameOfReference.getTransformTo(_eyeLevelFrameOfReference, _scratchMat4)
+                // mat4.getTranslation(_scratchVec3, _scratchMat4)
+                // mat4.getTranslation(_scratch2Vec3, currentGeoOriginAnchor().modelMatrix)
+                // vec3.subtract(_scratchVec3, _scratchVec3, _scratch2Vec3)
+                // vec3.transformMat4(_scratchVec3, _scratchVec3, _localToFixed)
+
+                // _scratchCartesian = Cesium.Cartesian3.unpack(_scratchVec3, 0, _scratchCartesian)
+                // let carto = Cesium.Cartographic.fromCartesian(_scratchCartesian)
+                // console.log("computed device height after reset: ", carto.height)
+            }
+        }
     }
 }
 
 var _updatingOrigin = false
-var _scratchCartographic = null
+var _geoAnchorDeleted = false
+
 async function updatePositionCallback (position, force=false)
 {
     if (!_updatingOrigin && 
-        (!_geoOrigin || force || 
+        (!_geoOrigin || _geoAnchorDeleted || force || 
             _geoOrigin.coords.accuracy > position.coords.accuracy || 
             (_geoOrigin.coords.accuracy == position.coords.accuracy && 
                 _geoOrigin.coords.altitudeAccuracy > position.coords.altitudeAccuracy))) {
@@ -336,14 +437,27 @@ async function updatePositionCallback (position, force=false)
         try {
             if (_useEstimatedElevationForViewer) {
                 _savedViewHeight = position.coords.altitude
-                _scratchCartographic = Cesium.Cartographic.fromDegrees(position.coords.longitude, position.coords.latitude, position.coords.altitude)
+                let _scratchCartographic = Cesium.Cartographic.fromDegrees(position.coords.longitude, position.coords.latitude, position.coords.altitude)
                 await updateHeightFromTerrain(_scratchCartographic)
-                position.coords.altitude = _scratchCartographic.height
+                position.coords.altitude = _scratchCartographic.height + _savedHeightOffset
+
+                // need to keep a bunch of these that are defined specifically relative to this
+                // position report with the height offset taken into account
+                position.cartesian = Cesium.Cartesian3.fromDegrees(position.coords.longitude, position.coords.latitude, position.coords.altitude)
+                position._fixedToLocal = mat4.create()
+                position._localToFixed = mat4.create()
+                _eastUpSouthToFixedFrame(position.cartesian, undefined, position._localToFixed)
+                Cesium.Matrix4.inverseTransformation(position._localToFixed, position._fixedToLocal) 
             }
+
+            console.log("new geo anchor: ", position.coords)
 
             // get a new Anchor right where the device is right now
             let _headLevelFrameOfReference = await _XRsession.requestFrameOfReference('head-model')
             let newAnchor = await _XRsession.addAnchor(_identity, _headLevelFrameOfReference)
+
+            _geoAnchorDeleted = false
+            newAnchor.addEventListener("remove", _handleGeoAnchorDelete)
 
             newAnchor._isInternalGeoAnchor = true
             if (!_overrideGeolocation && _geoOriginAnchor) {
@@ -353,7 +467,7 @@ async function updatePositionCallback (position, force=false)
             _geoOriginAnchor = newAnchor
             _geoOrigin = position
             // call this, because return from geolocation API may have null altitude
-            _geoCartesian = await cartesianToFixed(position.coords.longitude, position.coords.latitude, position.coords.altitude)
+            _geoCartesian = await cartographicToFixed(position.coords.longitude, position.coords.latitude, position.coords.altitude)
 
             if (!_overrideGeolocation) {
                 updateGeoCartesian(_geoCartesian, _geoOriginAnchor)
@@ -364,6 +478,11 @@ async function updatePositionCallback (position, force=false)
             console.error("error setting the geospatial origin: ", e)
         }
     }   
+}
+
+function _handleGeoAnchorDelete() {
+    console.log("geoAnchor deleted by system, will use next geospatial report")
+    _geoAnchorDeleted = true
 }
 
 function geoErrorCallback (positionError)
@@ -492,8 +611,12 @@ export default class XRGeospatialAnchor extends XRAnchor {
         })
     }
 
-    static useEstimatedElevation(setting) {
-        _useEstimatedElevation(setting)
+    static useEstimatedElevation(setting, offsetFromGround=0) {
+        return _useEstimatedElevation(setting, offsetFromGround)
+    }
+
+    static updateOffsetFromGround(offsetFromGround) {
+        return _updateOffsetFromGround(offsetFromGround)
     }
 
     // we can override the geo location, orientation, or both
