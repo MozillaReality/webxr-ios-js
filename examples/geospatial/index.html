@@ -41,7 +41,10 @@
 			textBox.setAttribute('id', 'text-box')
 			textBox.setAttribute('class', 'text-box')
 			//textBox.style.visibility = 'hidden'
-			textBox.innerText = 'Waiting to start ...'
+
+			textBox.myText = '<p>Waiting to start ...</p>'
+			textBox.innerHTML = textBox.myText
+
 			document.body.appendChild(textBox)
 
 			var raycaster = new THREE.Raycaster();
@@ -77,6 +80,27 @@
 			hudNode.visible = false
 			const HUD_Z = 0.2  // 2cm in front of display
 
+			updateLoop()
+
+			function sleep (time) {
+		        return new Promise((resolve) => setTimeout(resolve, time));
+    		}
+
+			XRGeospatialAnchor.useEstimatedElevation(true, 1.3)
+
+			async function updateLoop () {
+				let deviceCarto = await XRGeospatialAnchor.getDeviceCartographic()
+				let txt = textBox.myText + "<p>device altitude " + deviceCarto.height.toPrecision(6) + "</p>" 
+				let defElev = await XRGeospatialAnchor.getDefaultElevation(deviceCarto)
+				txt = txt + "<p>estimated altitude " + defElev.toPrecision(6) + "</p>"
+				textBox.innerHTML = txt 
+
+				await XRGeospatialAnchor.useEstimatedElevation(true, 1.3)
+
+				await sleep(1000)
+				setTimeout(() => updateLoop(), 1)
+			}
+
 			function updateScene() {
 				const deltaTime = clock.getDelta()
     			//const elapsedTime = clock.getElapsedTime()
@@ -100,11 +124,11 @@
 						let intersection = intersects.length ? intersects[0] : null
 						if (intersection) {
 							console.log("hit box: " + intersection.object.geoName)
-							textBox.innerText = 'At ' +  intersection.object.geoName + " box"
+							textBox.myText = 'At ' +  intersection.object.geoName + " box"
 							moveGeoOrigin(intersection)
 						} else {
 							console.log("miss, going back to device geolocation")
-							textBox.innerText = 'At device location'
+							textBox.myText = 'At device location'
 							clearGeoOrigin()
 						}
 					}
@@ -314,6 +338,7 @@
 					//document.getElementById('description').style.visibility = 'hidden'
 					hudNode.visible = true
 
+					textBox.myText = 'At device location'
 					document.getElementById('go-button').innerText = "End"
 					document.getElementById('go-button').style.display = 'none' 
 				} else {
