@@ -25,16 +25,6 @@ export default [
       name: 'WebXRPolyfill'
     },
     plugins: rollupPlugins() 
-  },
-  {
-    input: 'src/extensions/XRGeospatialAnchor.js',
-    output: {
-      file: './dist/webxr-geospatial-min.js',
-      format: 'umd',
-      name: 'XRGeospatialAnchor',
-      banner: banner
-    },
-    plugins: rollupPlugins() 
   }]
   
 
