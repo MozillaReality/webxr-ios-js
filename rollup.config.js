@@ -25,16 +25,6 @@ export default [
       banner: banner
     },
     plugins: rollupPlugins() 
-  },
-  {
-    input: 'src/extensions/XRGeospatialAnchor.js',
-    output: {
-      file: './dist/webxr-geospatial.js',
-      format: 'umd',
-      name: 'XRGeospatialAnchor',
-      banner: banner
-    },
-    plugins: rollupPlugins() 
   }]
   
 
