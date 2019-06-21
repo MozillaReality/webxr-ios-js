@@ -1078,6 +1078,7 @@ export default class ARKitWrapper extends EventTarget {
 		this._anchors.forEach(anchor => { 
 			anchor.clearChanged() 
 		})
+		window.webkit.messageHandlers.onUpdate.postMessage({});
 	}
 
 	startingRender() {
