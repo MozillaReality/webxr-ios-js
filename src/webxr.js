@@ -7,7 +7,7 @@
  */
 
 import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill'
-import {PRIVATE} from 'webxr-polyfill/src/api/XRFrameOfReference'
+import {PRIVATE} from 'webxr-polyfill/src/api/XRFrame'
 
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
@@ -23,14 +23,13 @@ const _workingMatrix = mat4.create()
 const _workingMatrix2 = mat4.create()
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
-WebXRPolyfill.prototype._patchRequestDevice = function(){
-	  var _arKitDevice = new ARKitDevice(this.global)
-		this.xr = new XR(new XRDevice(_arKitDevice))
-		this.xr._mozillaXRViewer = true
-    Object.defineProperty(this.global.navigator, 'xr', {
-      value: this.xr,
-      configurable: true,
-    })
+WebXRPolyfill.prototype._patchNavigatorXR = function() {
+	this.xr = new XR(Promise.resolve(new ARKitDevice(this.global)))
+	this.xr._mozillaXRViewer = true
+	Object.defineProperty(this.global.navigator, 'xr', {
+		value: this.xr,
+		configurable: true,
+	})
 }
 
 let mobileIndex =  navigator.userAgent.indexOf("Mobile/") 
@@ -50,22 +49,6 @@ Now install a few proposed AR extensions to the WebXR Device API:
 - hit-testing: https://github.com/immersive-web/hit-test/
 - anchors: https://github.com/immersive-web/anchors
 */
-
-// Note from BLAIR:
-// I'm ALMOST POSITIVE this is wrong:  we can't assume frames of reference have
-// transforms, it's just that we are always giving absolute transforms in this patched
-// polyfill, and NOT treating "eye-level" and "head-model" the way they should be.
-// All of this will change when the polyfill is updated to the final spec.
-function _xrFrameOfReferenceGetTransformTo(otherFoR, out){
-	return _getTransformTo(this[PRIVATE].transform, otherFoR[PRIVATE].transform, out)
-}
-
-function _getTransformTo(sourceMatrix, destinationMatrix, out){
-	mat4.invert(_workingMatrix, destinationMatrix)
-	//let out = mat4.identity(mat4.create())
-	//mat4.multiply(out, _workingMatrix, out)
-	return mat4.multiply(out, sourceMatrix, _workingMatrix)
-}
 
 function _updateWorldSensingState (options) {
 	return _arKitWrapper.updateWorldSensingState(options)
@@ -295,9 +278,53 @@ function _installExtensions(){
 	
 	if(window.XRFrame) {
 		Object.defineProperty(XRFrame.prototype, 'worldInformation', { get: _getWorldInformation });
-	}
-	if(window.XRFrameOfReference){
-		XRFrameOfReference.prototype.getTransformTo = _xrFrameOfReferenceGetTransformTo
+
+		// Note: The official WebXR polyfill doesn't support XRFrame.getPose() for
+		//       non target-ray/grip space yet (09/24/2019).
+		//       So supporting by ourselves here for now.
+		XRFrame.prototype._getPose = window.XRFrame.prototype.getPose;
+		XRFrame.prototype.getPose = function (space, baseSpace) {
+			if (space._specialType === 'target-ray' || space._specialType === 'grip') {
+				return this._getPose(space, baseSpace);
+			}
+
+			// @TODO: More proper handling
+			//   - Error handling
+			//   - Support XRSpace. Assuming the both spaces are XRReferenceSpace for now
+			//   - Check whether poses must be limited. Assuming it's false for now
+			//   - Support emulatedPosition true case. Assuming it's false for now
+			// See https://immersive-web.github.io/webxr/#populate-the-pose
+
+			const baseSpaceViewerPose = this.getViewerPose(baseSpace);
+
+			if (!baseSpaceViewerPose) {
+				return null;
+			}
+
+			// Note: Currently (10/10/2019) the official WebXR polyfill
+			//       always returns the same XRViewerPose instance from
+			//       .getViewerPose() of a XRFrame instance.
+			//       So we need to copy the matrix before calling the next
+			//       .getViewerPose().
+			//       See https://github.com/immersive-web/webxr-polyfill/issues/97
+
+			mat4.copy(_workingMatrix, baseSpaceViewerPose.transform.matrix);
+
+			const spaceViewerPose = this.getViewerPose(space);
+
+			if (!spaceViewerPose) {
+				return null;
+			}
+
+			mat4.invert(_workingMatrix2, spaceViewerPose.transform.matrix);
+
+			const resultMatrix = mat4.multiply(mat4.create(), _workingMatrix, _workingMatrix2);
+
+			return new XRPose(
+				new XRRigidTransform(resultMatrix),
+				false
+			);
+		}
 	}
 
 	// inject Polyfill globals {
