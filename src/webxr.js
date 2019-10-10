@@ -264,7 +264,6 @@ function _installExtensions(){
 		// XRSession.prototype._deleteAnchor = _deleteAnchor
 		XRSession.prototype.removeAnchor = _removeAnchor
 
-
 		// use "nonStandard" to signify these are unlikely to be standardized 
 		XRSession.prototype.nonStandard_createDetectionImage = _createDetectionImage
 		XRSession.prototype.nonStandard_destroyDetectionImage = _destroyDetectionImage
@@ -325,6 +324,17 @@ function _installExtensions(){
 				false
 			);
 		}
+
+		// Add lighting-estimate API
+		// Specification: https://github.com/immersive-web/lighting-estimation
+
+		XRFrame.prototype.getGlobalLightEstimate = function () {
+			return _arKitWrapper.getLightProbe();
+		};
+
+		XRFrame.prototype.getGlobalReflectionProbe = function () {
+			throw new Error('Not implemented');
+		};
 	}
 
 	// inject Polyfill globals {
