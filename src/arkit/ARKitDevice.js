@@ -204,9 +204,11 @@ export default class ARKitDevice extends XRDevice {
 						resolve(that._eyeLevelMatrix) 
 					})
 					return
-				case 'stage': // @TODO: Update
-					//return that._stageMatrix
-					reject(new Error('stage not supported', type))
+				case 'local-floor':
+				case 'bounded-floor':
+				case 'unbounded':
+					reject(new Error('not supported', type))
+					return
 				default:
 					reject(new Error('Unsupported frame of reference type', type))
 			}
