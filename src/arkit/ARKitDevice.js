@@ -125,7 +125,7 @@ export default class ARKitDevice extends XRDevice {
 		let watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
 			// Note: Commenting out options.outputContext for now because
 			//       I don't know what it's used for.
-			const session = new Session(/*options.outputContext ||*/ null)
+			const session = new Session()
 			this._sessions.set(session.id, session)
 			this._activeSession = session
 
@@ -303,9 +303,8 @@ export default class ARKitDevice extends XRDevice {
 
 let SESSION_ID = 100
 class Session {
-	constructor(outputContext){
+	constructor(){
 		this.ended = null // boolean
-		this.outputContext = outputContext // XRPresentationContext
 		this.baseLayer = null // XRWebGLLayer
 		this.id = ++SESSION_ID
 	}
