@@ -206,6 +206,13 @@ export default class ARKitDevice extends XRDevice {
 					return
 				case 'local-floor':
 				case 'bounded-floor':
+
+				// @TODO: Support unbounded reference space.
+				// @TODO: Support reset event.
+				//        In ARKit, the native origin can change as the user moves around.
+				//        In unbounded, the space origin can change. But in other space
+				//        such as local and local-floor, if the origin changes, a reset event should
+				//        be triggered on the coordinate system (per the spec).
 				case 'unbounded':
 					reject(new Error('not supported', type))
 					return
