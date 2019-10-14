@@ -104,11 +104,21 @@ async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
 	})
 }
 
-async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
-	// value is either
-	//  	Float32Array modelMatrix, 
-	//		XRHitResult hitResult
-	// XRFrameOfReference frameOfReference
+/**
+ * Note: In the latest(09/24/2019) anchor spec
+ *       https://github.com/immersive-web/anchors/blob/master/explainer.md
+ *       XRSession.addAnchor() takes two arguments - pose and referenceSpace.
+ *       It might be out of date because in the newest WebXR spec
+ *       we use XRFrame.getPose() to get the pose of space relative to baseSpace.
+ *       Then adding the third argument frame {XRFrame} here as temporal workaround.
+ *       We should update to follow the spec if the anchor spec is updated.
+ *
+ * @param value {XRHitResult|Float32Arra}
+ * @param referenceSpace {XRReferenceSpace}
+ * @param frame {XRFrame}
+ * @return {Promise<XRAnchor>}
+ */
+async function _addAnchor(value, referenceSpace, frame) {
 	  if (value instanceof XRHitResult) {
 			return _arKitWrapper.createAnchorFromHit(value._hit)
 			// const hit = value._hit;
@@ -144,28 +154,26 @@ async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
 			return new Promise((resolve, reject) => {
 				// need to get the data in eye-level reference frame.  In this polyfill,
 				// 
-				this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
-					frameOfReference.getTransformTo(eyeLevelFrameOfReference, _workingMatrix)
+				this.requestReferenceSpace('local').then(localReferenceSpace => {
+					mat4.copy(_workingMatrix, frame.getPose(localReferenceSpace, referenceSpace).transform.matrix);
 					const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value)
 
-					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(anchor => {
-						resolve(anchor)
-
+					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(resolve)
 					// var anchor = new XRAnchor(anchorInWorldMatrix)
 					// _arKitWrapper.addAnchor(anchor.uid, anchor.modelMatrix()).then(detail => { 
 					// 	anchor.modelMatrix = detail.transform
 					// 	this._setAnchor(anchor)
 					// 	resolve(anchor)
-					}).catch((...params) => {
+					.catch((...params) => {
 						console.error('could not create anchor', ...params)
 						reject()
 					})
-				}).catch((...params) => {
-					console.error('could not create eye-level frame of reference', ...params)
-					reject()
-				})
+				});
+			}).catch((...params) => {
+				console.error('could not create eye-level frame of reference', ...params)
+				reject()
 			});
-		}	else {
+		} else {
 			return Promise.reject('invalid value passed to addAnchor', value)	
 		}
 }
