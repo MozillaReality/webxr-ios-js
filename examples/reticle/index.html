@@ -7,7 +7,7 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three/three.min.js"></script>
- 		<script module src="../../dist/webxr.js"></script>
+		<script module src="../../xrshim.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
@@ -27,35 +27,167 @@
 			*/
 
 			// some dependencies and utilities
-			import * as mat4 from '../libs/gl-matrix/mat4.js'
-			import * as vec3 from '../libs/gl-matrix/vec3.js'
+			import * as mat4 from '../libs/gl-matrix/mat4.js';
+			import * as vec3 from '../libs/gl-matrix/vec3.js';
 
-			import XREngine from "../XREngine.js"
-			import XRInputManager from "../XRInputManager.js"
+			import XREngine from '../XREngine.js';
+			import XRInputManager from '../XRInputManager.js';
 
-			let device = null
-			let session = null
-			let eyeLevelFrameOfReference = null
-			let engine = null
+			let session = null;
+			let localReferenceSpace = null;
+			let viewerReferenceSpace = null;
+			let engine = null;
 			
 			// temporary working variables
-			const workingMatrix = mat4.create()
-			const workingVec3 = vec3.create()
+			const workingMatrix = mat4.create();
+			const workingVec3 = vec3.create();
 
-
-			var savedOrigin = [0,0,0]
-			var savedDirection = [0,0,-1]
-			var reticleParent = new THREE.Object3D()
-			var reticle = null
+			let savedOrigin = [0,0,0];
+			let savedDirection = [0,0,-1];
+			const reticleParent = new THREE.Object3D();
+			let reticle = null;
 			
-			var reticleTrackedColor = new THREE.Color( 0xDDFFDD );
-			var reticleNotTrackedColor = new THREE.Color( 0xFF6666 );
-			var reticleMaterial = new THREE.MeshBasicMaterial({ color: reticleTrackedColor })
-			var requestNextHit = true
+			const reticleTrackedColor = new THREE.Color(0xDDFFDD);
+			const reticleNotTrackedColor = new THREE.Color(0xFF6666);
+			const reticleMaterial = new THREE.MeshBasicMaterial({color: reticleTrackedColor});
+			let requestNextHit = true;
 
-			function initializeScene(){
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
+			// handle hit testing slightly differently than other samples, since we're doing
+			// it per frame.  The "boiler plate" code below is slightly different, setting 
+			// requestNextHit on tap instead of executing the hit test.  The custom XREngineHits
+			// does a hit test each frame if the previous one has resolved
+			const handleHitResults = (hits, frame) => {
+				const size = 0.05;
+				if (hits.length > 0) {
+					const hit = hits[0];
+
+					// convert hit matrices from head to eye level coordinate systems
+					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
+					mat4.multiply(workingMatrix, workingMatrix, hit.hitMatrix);
+
+					reticleParent.matrix.fromArray(workingMatrix);
+					reticleParent.visible = true;   // it starts invisible
+					reticle.material.color = reticleTrackedColor;
+
+					reticleParent.updateMatrixWorld(true);
+				} else {
+					reticle.material.color = reticleNotTrackedColor;
+				}
+				requestNextHit = true;
+			};
+
+			class XREngineHits extends XREngine {
+				endFrame(frame) {
+					if (requestNextHit) {
+						requestNextHit = false;
+
+						session.requestHitTest(savedDirection, viewerReferenceSpace, frame)
+							.then(hits => handleHitResults(hits, frame))
+							.catch(err => {
+								console.error('Error testing hits', err);
+							});
+					}
+				}
+			}
+
+			document.getElementById('description').addEventListener('touchstart', event => {
+				event.target.style.display = 'none';
+				event.stopPropagation();
+			}, {capture: true});
+
+			document.getElementById('go-button').addEventListener('click', event => {
+				if (!session) {
+					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+						if (supported) {
+							navigator.xr.requestSession('immersive-ar')
+								.then(handleSessionStarted)
+								.catch(err => {
+									console.error('Session setup error', err);
+								});
+							document.getElementById('go-button').innerText = 'End';
+							document.getElementById('go-button').style.display = 'none';
+						} else {
+							throw new Error('No immersive-ar support');
+						}
+					});
+				} else {
+					session.end();
+					session = null;
+					reticleParent.visible = false;   // it starts invisible
+					document.getElementById('description').style.display = 'block';
+					document.getElementById('go-button').style.display = 'block';
+					document.getElementById('go-button').innerText = 'Go';
+				}
+			}, true);
+
+			document.getElementById('go-button').addEventListener('touchstart', event => {
+				event.stopPropagation()
+			}, true);
+
+			// handle input events from the XRInputManager
+			const inputManager = new XRInputManager((eventName, details) => {
+				if (session === null) return;
+
+				switch(eventName){
+					case 'normalized-touch':
+						hitTestWithScreenCoordinates(...details.normalizedCoordinates);
+						break;
+					default:
+						console.error('unknown xr input event', eventName, details);
+						break;
+				}
+			});
+
+			const hitTestWithScreenCoordinates = (normalizedX, normalizedY) => {
+				// Convert the screen coordinates into head-model origin/direction for hit testing
+				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(
+					normalizedX, normalizedY, engine.camera.projectionMatrix);
+				savedOrigin = origin;
+				savedDirection = direction;
+
+				requestNextHit = true;
+			};
+
+			const handleSessionStarted = async xrSession => {
+				session = xrSession;
+
+				// Create the context where we will render our 3D scene
+				const canvas = document.createElement('canvas');
+				const context = canvas.getContext('webgl', {
+					xrCompatible: true
+				});
+
+				if (!context) throw new Error('Could not create a webgl context');
+
+				// Set up the base layer
+				session.updateRenderState({baseLayer: new XRWebGLLayer(session, context)});
+
+				localReferenceSpace = await session.requestReferenceSpace('local');
+				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
+
+				// Create a simple test scene and renderer
+				// The engine's scene is in the eye-level coordinate system 
+				// Our custom engine class does hit testing at the end of each rAF 
+				engine = new XREngineHits(canvas, context);
+
+				session.requestAnimationFrame(async (t, frame) => {
+					// get the location of the device, and use it to create an 
+					// anchor with the identity orientation
+					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
+					mat4.getTranslation(workingVec3, workingMatrix);
+					mat4.fromTranslation(workingMatrix, workingVec3);
+
+					const anchor = await session.addAnchor(workingMatrix, localReferenceSpace, frame);
+					engine.addAnchoredNode(anchor, engine.root);
+
+					// Kick off rendering
+					session.requestAnimationFrame(handleAnimationFrame);
+				});
+
+				// initialize scene
+
+				engine.addAmbientLight();
+				engine.addDirectionalLight();
 
 				// Add a box and axis at the origin of the eye-level coordinate system
 				// for debugging by uncommenting these lines
@@ -65,217 +197,40 @@
 				reticle = new THREE.Mesh(
 					new THREE.RingGeometry(0.04, 0.05, 36, 64),
 					reticleMaterial
-				)
+				);
 
-				reticle.geometry.applyMatrix(new THREE.Matrix4().makeRotationX(THREE.Math.degToRad(-90)))
-				reticleParent.add(reticle)
+				reticle.geometry.applyMatrix(new THREE.Matrix4().makeRotationX(THREE.Math.degToRad(-90)));
+				reticleParent.add(reticle);
 
-				reticleParent.matrixAutoUpdate = false
-				reticleParent.visible = false
-				engine.scene.add(reticleParent)
-			}
-			
-			// handle hit testing slightly differently than other samples, since we're doing
-			// it per frame.  The "boiler plate" code below is slightly different, setting 
-			// requestNextHit on tap instead of executing the hit test.  The custom XREngineHits
-			// does a hit test each frame if the previous one has resolved
-			function handleHitResults(hits) {
-				let size = 0.05;
-				if (hits.length > 0) {
-					let hit = hits[0]
-
-					// convert hit matrices from head to eye level coordinate systems
-					session.requestFrameOfReference('head-model').then(headFrameOfReference => {
-						headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
-						mat4.multiply(workingMatrix, workingMatrix, hit.hitMatrix)
-
-						const node = reticleParent
-						node.matrix.fromArray(workingMatrix)
-						reticleParent.visible = true   // it starts invisible
-						reticle.material.color = reticleTrackedColor
-
-						node.updateMatrixWorld(true)
-					})
-				} else {
-					reticle.material.color = reticleNotTrackedColor
-				}
-				requestNextHit = true
-			}
-
-			class XREngineHits extends XREngine {
-				endFrame(){
-					if (requestNextHit) {
-						requestNextHit = false
-						
-						session.requestFrameOfReference('head-model').then(headFrameOfReference => {
-							session.requestHitTest(savedOrigin, savedDirection, headFrameOfReference)
-								.then(handleHitResults)
-								.catch(err => {
-									console.error('Error testing hits', err)
-								})
-						})
-					}
-				}
-			}
-
-			////////////////////////////////////////////////////
-			////////////////////////////////////////////////////
-			// BOILER PLATE.  Can you feel the plates boiling?
-			//
-			// There are slight differences between examples but largely this code is similar
-			//
-			// Create the output context where the XRSession will place composited renders
-			const xrCanvas = document.createElement('canvas')
-			xrCanvas.setAttribute('class', 'xr-canvas')
-			const xrContext = xrCanvas.getContext('xrpresent')
-			if(!xrContext){
-				console.error('No XR context', xrCanvas)
-			}
-
-			// get the XR Device
-			navigator.xr.requestDevice().then(xrDevice => {
-				device = xrDevice
-			}).catch(err => {
-			})
-
-			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
-			function hideMe(event) { 
-				event.target.style.display = 'none' 
-				event.stopPropagation()
-			}
-
-			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
-			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
-			function handleGoButtonTouch(event) { 
-				event.stopPropagation()
-			}
-
-			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager(handleXRInput)
-			function handleXRInput(eventName, details){
-				switch(eventName){
-					case 'normalized-touch':
-						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
-						break
-					default:
-						console.error('unknown xr input event', eventName, details)
-						break
-				}
-			}
-
-			function hitTestWithScreenCoordinates(normalizedX, normalizedY){
-				if(session === null){
-					console.log('No session for hit testing')
-					return
-				}
-
-				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = 
-					XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
-																 engine.camera.projectionMatrix)
-				savedOrigin = origin
-				savedDirection = direction
-
-				requestNextHit = true
-			}
-
-			/////////////////////
-			// Session startup / shutdown
-			function handleStartSessionRequest(ev){
-				if(device === null){
-					console.error('No xr device')
-					return
-				}
-
-				if (!session) {
-					device.requestSession({ outputContext: xrContext })
-						.then(handleSessionStarted)
-						.catch(err => {
-							console.error('Session setup error', err)
-						})
-					document.getElementById('go-button').innerText = "End"
-					document.getElementById('go-button').style.display = "none"
-				} else {
-					session.end()
-					handleSessionEnded();
-					reticleParent.visible = false   // it starts invisible
-					document.getElementById('description').style.display = 'block' 
-					document.getElementById('go-button').style.display = "block"
-					document.getElementById('go-button').innerText = "Go"
-				}
-			}
-
-			function handleSessionEnded() {	
-				session = null
-			}
-
-			function handleSessionStarted(xrSession){
-				session = xrSession
-				document.body.insertBefore(xrCanvas, document.body.firstChild)
-
-				// Create the context where we will render our 3D scene
-				const canvas = document.createElement('canvas')
-				var glContext = canvas.getContext('webgl', {
-					compatibleXRDevice: device
-				})
-				if(!glContext) throw new Error('Could not create a webgl context')
-
-				// Set up the base layer
-				session.baseLayer = new XRWebGLLayer(session, glContext)
-
-				// Create a simple test scene and renderer
-				// The engine's scene is in the eye-level coordinate system 
-				// Our custom engine class does hit testing at the end of each rAF 
-				engine = new XREngineHits(canvas, glContext)
-
-				createRootNode().then(() => {
-					// Kick off rendering
-					session.requestAnimationFrame(handleAnimationFrame)
-				})
-
-				initializeScene()
-			}
-
-			async function createRootNode() {
-				let headFrameOfReference = await session.requestFrameOfReference('head-model')
-				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
-
-				// get the location of the device, and use it to create an 
-				// anchor with the identity orientation
-				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
-				mat4.getTranslation(workingVec3, workingMatrix)
-				mat4.fromTranslation(workingMatrix, workingVec3)
-
-				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
-				engine.addAnchoredNode(anchor, engine.root)
-				
-				return true
-			}
+				reticleParent.matrixAutoUpdate = false;
+				reticleParent.visible = false;
+				engine.scene.add(reticleParent);
+			};
 
 			////////////////
 			// render loop			
-			function handleAnimationFrame(t, frame){
-				if(!session || session.ended) return
-				session.requestAnimationFrame(handleAnimationFrame)
+			const handleAnimationFrame = (t, frame) => {
+				if (!session || session.ended) return;
 
-				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
-				if(!pose){
-					console.log('No pose')
-					return
+				session.requestAnimationFrame(handleAnimationFrame);
+
+				const pose = frame.getViewerPose(localReferenceSpace);
+				if (!pose) {
+					console.log('No pose');
+					return;
 				}
 
-				engine.startFrame()
-				for (let view of frame.views) {
+				engine.startFrame();
+				for (const view of pose.views) {
 					engine.preRender(
-						session.baseLayer.getViewport(view),
+						session.renderState.baseLayer.getViewport(view),
 						view.projectionMatrix,
-						pose.getViewMatrix(view)
-					)
-					engine.render()
+						view.transform.inverse.matrix
+					);
+					engine.render();
 				}
-				engine.endFrame()
-			}
-
+				engine.endFrame(frame);
+			};
 		</script>
 	</body>
 </html>
