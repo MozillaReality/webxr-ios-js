@@ -7,7 +7,7 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three/three.min.js"></script>
- 		<script module src="../../dist/webxr.js"></script>
+		<script module src="../../xrshim.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
@@ -18,30 +18,114 @@
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
+			document.getElementById('description').addEventListener('touchstart', event => {
+				event.target.style.display = 'none';
+				event.stopPropagation();
+			}, {capture: true});
+
 			// some dependencies and utilities
-			import * as mat4 from '../libs/gl-matrix/mat4.js'
-			import * as vec3 from '../libs/gl-matrix/vec3.js'
+			import * as mat4 from '../libs/gl-matrix/mat4.js';
+			import * as vec3 from '../libs/gl-matrix/vec3.js';
 
-			import XREngine from "../XREngine.js"
-			import XRInputManager from "../XRInputManager.js"
+			import XREngine from "../XREngine.js";
+			import XRInputManager from "../XRInputManager.js";
 
-			let device = null
-			let session = null
-			let engine = null
+			let session = null;
+			let engine = null;
 			
 			// temporary working variables
-			const workingMatrix1 = mat4.create()
-			const workingMatrix2 = mat4.create()
-			const workingVec3 = vec3.create()
+			const workingMatrix1 = mat4.create();
+			const workingMatrix2 = mat4.create();
+			const workingVec3 = vec3.create();
 
-			const upY = vec3.fromValues(0,1,0)
+			const upY = vec3.fromValues(0,1,0);
+
+			const coordinatesQueue = [];
 
 			// we can save the eyeLevel FOR because in this implementation
 			// it doesn't have state (the head-model FOR does, and shouldn't be cached,
 			// which should be fixed)
-			var eyeLevelFrameOfReference = null
+			let localReferenceSpace = null;
+			let viewerReferenceSpace = null;
 
-			function initializeScene(){
+			document.getElementById('go-button').addEventListener('click', event => {
+				if (!session) {
+					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+						if (supported) {
+							navigator.xr.requestSession('immersive-ar')
+								.then(handleSessionStarted)
+								.catch(err => {
+									console.error('Session setup error', err)
+								});
+							document.getElementById('go-button').innerText = 'End';
+							document.getElementById('go-button').style.display = 'none';
+						} else {
+							throw new Error('No immersive-ar support');
+						}
+					});
+				} else {
+					session.end();
+					session = null;
+					document.getElementById('description').style.display = 'block' ;
+					document.getElementById('go-button').style.display = 'block';
+					document.getElementById('go-button').innerText = 'Go';
+				}
+			}, true);
+
+			document.getElementById('go-button').addEventListener('touchstart', event => {
+				event.stopPropagation();
+			}, true);
+
+			// handle input events from the XRInputManager
+			const inputManager = new XRInputManager((eventName, details) => {
+				if (!session) return;
+
+				switch (eventName){
+					case 'normalized-touch':
+						coordinatesQueue.push([details.normalizedCoordinates[0], details.normalizedCoordinates[1]]);
+						break;
+					default:
+						console.error('unknown xr input event', eventName, details);
+						break;
+				}
+			});
+
+			const handleSessionStarted = async xrSession => {
+				session = xrSession;
+
+				// Create the context where we will render our 3D scene
+				const canvas = document.createElement('canvas');
+				const context = canvas.getContext('webgl', {
+					xrCompatible: true
+				});
+
+				if (!context) throw new Error('Could not create a webgl context');
+
+				// Set up the base layer
+				session.updateRenderState({baseLayer: new XRWebGLLayer(session, context)});
+
+				localReferenceSpace = await session.requestReferenceSpace('local');
+				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
+
+				// Create a simple test scene and renderer
+				// The engine's scene is in the eye-level coordinate system 
+				engine = new XREngine(canvas, context);
+
+				session.requestAnimationFrame(async (t, frame) => {
+					// get the location of the device, and use it to create an 
+					// anchor with the identity orientation
+					mat4.copy(workingMatrix1, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
+					mat4.getTranslation(workingVec3, workingMatrix1);
+					mat4.fromTranslation(workingMatrix1, workingVec3);
+
+					const anchor = await session.addAnchor(workingMatrix1, localReferenceSpace, frame);
+					engine.addAnchoredNode(anchor, engine.root);
+
+					// Kick off rendering
+					session.requestAnimationFrame(handleAnimationFrame);
+				});
+
+				// initialize scene
 				engine.addAmbientLight()
 				engine.addDirectionalLight()
 
@@ -49,193 +133,78 @@
 				// for debugging by uncommenting these lines
 				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
 				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
-			}
+			};
 
-			function addAnchorInScreenCoordinates(normalizedX, normalizedY){
-				if(session === null){
-					console.log('No session for adding anchor')
-					return
-				}
+			const addAnchorInScreenCoordinates = (normalizedX, normalizedY, frame) => {
 				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = 
-					XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
-																 engine.camera.projectionMatrix)
+				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(
+					normalizedX, normalizedY, engine.camera.projectionMatrix);
 
 				// set up the local transformation to be positioned relative to the camera along
 				// the ray, but also oriented along the ray direction
-				mat4.targetTo(workingMatrix1, origin, direction, upY)
-				mat4.fromTranslation(workingMatrix2, direction)
-				mat4.multiply(workingMatrix1, workingMatrix2, workingMatrix1)
+				mat4.targetTo(workingMatrix1, origin, direction, upY);
+				mat4.fromTranslation(workingMatrix2, direction);
+				mat4.multiply(workingMatrix1, workingMatrix2, workingMatrix1);
 
 				// create an anchor in front of the phone
-				session.requestFrameOfReference('head-model').then(headFrameOfReference => {
-						session.addAnchor(workingMatrix1, headFrameOfReference).then(anchor => {					
-							engine.addAnchoredNode(anchor, createSceneGraphNode())					
-						}).catch(err => {
-							console.error('Error adding anchor', err)
-						})
-				})
-			}
+				session.addAnchor(workingMatrix1, viewerReferenceSpace, frame).then(anchor => {					
+					engine.addAnchoredNode(anchor, createSceneGraphNode());					
+				}).catch(err => {
+					console.error('Error adding anchor', err);
+				});
+			};
 
 			// Creates a box used to indicate the location of an anchor offset
-			function createSceneGraphNode(){
-				let group = new THREE.Group()
-				let geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1)
-				var color = new THREE.Color( 0xffffff );
-        		color.setHex( Math.random() * 0xffffff );
-				let material = new THREE.MeshPhongMaterial({ color: color })
-				let mesh = new THREE.Mesh(geometry, material)
+			const createSceneGraphNode = () => {
+				const group = new THREE.Group();
+				const geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1);
+				const color = new THREE.Color(0xffffff);
+				color.setHex(Math.random() * 0xffffff);
+				const material = new THREE.MeshPhongMaterial({color: color});
+				const mesh = new THREE.Mesh(geometry, material);
 	
-				var outlineMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
-				var outlineMesh = new THREE.Mesh( geometry, outlineMaterial );
+				const outlineMaterial = new THREE.MeshBasicMaterial({color: 0x00ff00, side: THREE.BackSide});
+				const outlineMesh = new THREE.Mesh(geometry, outlineMaterial);
 
 				mesh.position.set(0, 0.05, 0)
 				outlineMesh.position.set(0, 0.05, 0);
 				outlineMesh.scale.multiplyScalar(1.05);
 
-				group.add(mesh)
-				group.add(outlineMesh)
-				return group
-			}
+				group.add(mesh);
+				group.add(outlineMesh);
 
-			////////////////////////////////////////////////////
-			////////////////////////////////////////////////////
-			// BOILER PLATE.  Can you feel the plates boiling?
-			//
-			// Create the output context where the XRSession will place composited renders
-			const xrCanvas = document.createElement('canvas')
-			xrCanvas.setAttribute('class', 'xr-canvas')
-			const xrContext = xrCanvas.getContext('xrpresent')
-			if(!xrContext){
-				console.error('No XR context', xrCanvas)
-			}
-
-			// get the XR Device
-			navigator.xr.requestDevice().then(xrDevice => {
-				device = xrDevice
-			}).catch(err => {
-				console.error('Error', err)
-			})
- 
-			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
-			function hideMe(event) { 
-				event.target.style.display = 'none' 
-				event.stopPropagation()
-			}
-
-			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
-			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
-			function handleGoButtonTouch(event) { 
-				event.stopPropagation()
-			}
-
-			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager(handleXRInput)
-			function handleXRInput(eventName, details){
-				switch(eventName){
-					case 'normalized-touch':
-						addAnchorInScreenCoordinates(...details.normalizedCoordinates)
-						break
-					default:
-						console.error('unknown xr input event', eventName, details)
-						break
-				}
-			}
-
-			/////////////////////
-			// Session startup / shutdown
-			function handleStartSessionRequest(ev){
-				if(device === null){
-					console.error('No xr device')
-					return
-				}
-
-				if (!session) {
-					device.requestSession({ outputContext: xrContext })
-						.then(handleSessionStarted)
-						.catch(err => {
-							console.error('Session setup error', err)
-						})
-					document.getElementById('go-button').innerText = "End"
-					document.getElementById('go-button').style.display = "none"
-				} else {
-					session.end()
-					handleSessionEnded();
-					document.getElementById('description').style.display = 'block' 
-					document.getElementById('go-button').style.display = "block"
-					document.getElementById('go-button').innerText = "Go"
-				}
-			}
-
-			function handleSessionEnded() {	
-				session = null
-			}
-
-			function handleSessionStarted(xrSession){
-				session = xrSession
-				document.body.insertBefore(xrCanvas, document.body.firstChild)
-
-				// Create the context where we will render our 3D scene
-				const canvas = document.createElement('canvas')
-				var glContext = canvas.getContext('webgl', {
-					compatibleXRDevice: device
-				})
-				if(!glContext) throw new Error('Could not create a webgl context')
-
-				// Set up the base layer
-				session.baseLayer = new XRWebGLLayer(session, glContext)
-
-				// Create a simple test scene and renderer
-				// The engine's scene is in the eye-level coordinate system 
-				engine = new XREngine(canvas, glContext)
-
-				createRootNode().then(() => {
-					// Kick off rendering
-					session.requestAnimationFrame(handleAnimationFrame)
-				})
-
-				initializeScene()
-			}
-
-			async function createRootNode() {
-				let headFrameOfReference = await session.requestFrameOfReference('head-model')
-				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
-
-				// get the location of the device, and use it to create an 
-				// anchor with the identity orientation
-				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix1)
-				mat4.getTranslation(workingVec3, workingMatrix1)
-				mat4.fromTranslation(workingMatrix1, workingVec3)
-
-				let anchor = await session.addAnchor(workingMatrix1, eyeLevelFrameOfReference)
-				engine.addAnchoredNode(anchor, engine.root)
-				
-				return true
-			}
+				return group;
+			};
 
 			// render loop			
-			function handleAnimationFrame(t, frame){
-				if(!session || session.ended) return
-				session.requestAnimationFrame(handleAnimationFrame)
+			const handleAnimationFrame = (t, frame) => {
+				if(!session || session.ended) return;
 
-				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
-				if(!pose){
-					console.log('No pose')
-					return
+				session.requestAnimationFrame(handleAnimationFrame);
+
+				for (const coordinates of coordinatesQueue) {
+					addAnchorInScreenCoordinates(coordinates[0], coordinates[1], frame);
 				}
 
-				engine.startFrame()
-				for (let view of frame.views) {
+				coordinatesQueue.length = 0;
+
+				const pose = frame.getViewerPose(localReferenceSpace);
+				if (!pose){
+					console.log('No pose');
+					return;
+				}
+
+				engine.startFrame();
+				for (const view of pose.views) {
 					engine.preRender(
-						session.baseLayer.getViewport(view),
+						session.renderState.baseLayer.getViewport(view),
 						view.projectionMatrix,
-						pose.getViewMatrix(view)
+						view.transform.inverse.matrix
 					)
-					engine.render()
+					engine.render();
 				}
-				engine.endFrame()
+				engine.endFrame();
 			}
-
 		</script>
 	</body>
 </html>
