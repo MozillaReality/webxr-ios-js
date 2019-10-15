@@ -7,7 +7,7 @@
   "scripts": {
     "build": "cross-env NODE_ENV=production rollup -c rollup.config.js",
     "minify": "cross-env NODE_ENV=production rollup -c rollup-minify.config.js",
-    "start": "npm run build && http-server ."
+    "start": "npm run build && http-server . -c-1"
   },
   "repository": {
     "type": "git",
@@ -34,6 +34,6 @@
   },
   "dependencies": {
     "gl-matrix": "^2.5.1",
-    "webxr-polyfill": "git://github.com/blairmacintyre/webxr-polyfill.git#minimal-for-app"
+    "webxr-polyfill": "git://github.com/takahirox/webxr-polyfill.git#ForWebXRViewer"
   }
 }

@@ -12,7 +12,7 @@ import XRPlaneMesh from '../extensions/XRPlaneMesh'
 import XRImageAnchor from '../extensions/XRImageAnchor'
 import XRFaceMesh from '../extensions/XRFaceMesh'
 import XRVideoFrame from '../extensions/XRVideoFrame'
-import XRLightEstimate from '../extensions/XRLightEstimate'
+import XRLightProbe from '../extensions/XRLightProbe'
 import base64 from "../lib/base64-binary.js";
 import * as mat4 from "gl-matrix/src/gl-matrix/mat4";
 import XRMesh from '../extensions/XRMesh';
@@ -38,7 +38,7 @@ export default class ARKitWrapper extends EventTarget {
 		}
 
 		this._timestamp = 0;
-		this._lightIntensity = new XRLightEstimate()
+		this._lightProbe = null;
 		
 		this._deviceId = null
 		this._isWatching = false
@@ -72,7 +72,6 @@ export default class ARKitWrapper extends EventTarget {
 		 */
 		// currently requested configuration from web app
 		this._worldSensingState = {
-			illuminationDetectionState: false,
 			meshDetectionState: false
 		}
 		// world information corresponding to that
@@ -726,7 +725,17 @@ export default class ARKitWrapper extends EventTarget {
 					})
 		})
 	}
-	
+
+	getLightProbe() {
+		return new Promise((resolve, reject) => {
+			if (this._lightProbe) {
+				resolve(this._lightProbe);
+			} else {
+				// @TODO: Properer handlig
+				reject(new Error('Not populated yet'));
+			}
+		});
+	}
 
 	/* 
 	RACE CONDITION:  call stop, then watch:  stop does not set isWatching false until it gets a message back from the app,
@@ -978,11 +987,6 @@ export default class ARKitWrapper extends EventTarget {
 	// we have asked for in the past.  So, if we ASK for worldSensing, we 
 	// won't ask again, but if we haven't, we will once
 	updateWorldSensingState(options) {
-		if (options.hasOwnProperty("illuminationDetectionState") && this._currentPermissions.worldAccess) {
-			this._worldSensingState.illuminationDetectionState = options.illuminationDetectionState.enabled || false
-		} else {
-			this._worldSensingState.illuminationDetectionState = false
-		}
 		if (options.hasOwnProperty("meshDetectionState") && this._currentPermissions.worldAccess) {
 			this._worldSensingState.meshDetectionState = options.meshDetectionState.enabled || false
 		} else {
@@ -998,9 +1002,6 @@ export default class ARKitWrapper extends EventTarget {
 		}
 
 		let state = {}
-		if (this._worldSensingState.illuminationDetectionState) {
-			state.estimatedLight = this._lightIntensity
-		}
 		if (this._worldSensingState.meshDetectionState) {
 			state.meshes = []
 			this._anchors.forEach(anchor => { 
@@ -1094,7 +1095,17 @@ export default class ARKitWrapper extends EventTarget {
 		this._worldInformation = null
 
 		this._timestamp = this._adjustARKitTime(data.timestamp)
-		this._lightIntensity.ambientIntensity = data.light_intensity;
+
+		// @TODO: Is creating XRLightProbe instance in each _onData()
+		//        wasting heap?
+
+		this._lightProbe = new XRLightProbe({
+			// Note: A value of 1000 represents "neutral" lighting.
+			// (https://developer.apple.com/documentation/arkit/arlightestimate/2878308-ambientintensity)
+			// @TODO: Properer convesion from light_intensity to indirectIrradiance
+			indirectIrradiance: data.light_intensity / 1000
+		});
+
 		mat4.copy(this._cameraTransform, data.camera_transform);
 		mat4.copy(this._viewMatrix, data.camera_view);
 		mat4.copy(this._projectionMatrix, data.projection_camera);

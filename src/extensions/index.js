@@ -11,7 +11,7 @@ import XRAnchorOffset from './XRAnchorOffset'
 import XRFaceMesh from  './XRFaceMesh'
 import XRHitResult from './XRHitResult'
 import XRImageAnchor from  './XRImageAnchor'
-import XRLightEstimate from './XRLightEstimate'
+import XRLightProbe from './XRLightProbe'
 import XRMesh from './XRMesh'
 import XRPlaneMesh from './XRPlaneMesh'
 import XRVideoFrame from './XRVideoFrame'
@@ -22,7 +22,7 @@ export default {
     XRFaceMesh,
     XRHitResult,
     XRImageAnchor,
-    XRLightEstimate,
+    XRLightProbe,
     XRMesh,
     XRPlaneMesh,
     XRVideoFrame

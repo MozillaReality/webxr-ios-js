@@ -7,7 +7,7 @@
  */
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
 
-import PolyfilledXRDevice from 'webxr-polyfill/src/devices/PolyfilledXRDevice'
+import XRDevice from 'webxr-polyfill/src/devices/XRDevice'
 
 import {throttle, throttledConsoleLog} from '../lib/throttle.js'
 
@@ -15,7 +15,7 @@ import ARKitWrapper from './ARKitWrapper.js'
 import ARKitWatcher from './ARKitWatcher.js'
 
 
-export default class ARKitDevice extends PolyfilledXRDevice {
+export default class ARKitDevice extends XRDevice {
 	constructor(global){
 		super(global)
 		this._throttledLogPose = throttle(this.logPose, 1000)
@@ -26,9 +26,16 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		// A div prepended to body children that will contain the session layer
 		this._wrapperDiv = document.createElement('div')
 		this._wrapperDiv.setAttribute('class', 'arkit-device-wrapper')
-		document.addEventListener('DOMContentLoaded', ev => {
-			document.body.insertBefore(this._wrapperDiv, document.body.firstChild || null)
-		})
+
+		const insertWrapperDiv = () => {
+			document.body.insertBefore(this._wrapperDiv, document.body.firstChild || null);
+		};
+
+		if (document.body) {
+			insertWrapperDiv();
+		} else {
+			document.addEventListener('DOMContentLoaded', ev => insertWrapperDiv);
+		}
 
 		this._headModelMatrix = mat4.create() // Model and view matrix are the same
 		this._projectionMatrix = mat4.create()
@@ -75,15 +82,13 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 	get depthFar(){ return this._depthFar }
 	set depthFar(val){ this._depthFar = val }
 
-	supportsSession(options={}){
-		// true if:
-		//  not immersive
-		return !options.hasOwnProperty("immersive") || !options.immersive
+	isSessionSupported(mode){
+		return mode === 'inline' || mode === 'immersive-ar';
 	}
 
-	async requestSession(options={}){
-		if(!this.supportsSession(options)){
-			console.error('Invalid session options', options)
+	async requestSession(mode, xrSessionInit={}){
+		if(!this.isSessionSupported(mode)){
+			console.error('Invalid session mode', mode)
 			return Promise.reject()
 		}
 		if(!this._arKitWrapper){
@@ -95,15 +100,21 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			return Promise.reject()
 		}
 
+		const requiredFeatures = xrSessionInit.requiredFeatures || [];
+		const optionalFeatures = xrSessionInit.optionalFeatures || [];
+
 		var ARKitOptions = {}
-		if (options.hasOwnProperty("worldSensing")) {
-			ARKitOptions.worldSensing = options.worldSensing
+		if (requiredFeatures.indexOf("worldSensing") >= 0 ||
+			optionalFeatures.indexOf("worldSensing") >= 0) {
+			ARKitOptions.worldSensing = true;
 		}
-		if (options.hasOwnProperty("computerVision")) {
-			ARKitOptions.videoFrames = options.useComputerVision
+		if (requiredFeatures.indexOf("computerVision") >= 0 ||
+			optionalFeatures.indexOf("computerVision") >= 0) {
+			ARKitOptions.videoFrames = true;
 		}
-		if (options.hasOwnProperty("alignEUS")) {
-			ARKitOptions.alignEUS = options.alignEUS
+		if (requiredFeatures.indexOf("alignEUS") >= 0 ||
+			optionalFeatures.indexOf("alignEUS") >= 0) {
+			ARKitOptions.alignEUS = true;
 		}
 		let initResult = await this._arKitWrapper.waitForInit().then(() => {
 		}).catch((...params) => {
@@ -112,7 +123,9 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 		})
 
 		let watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
-			const session = new Session(options.outputContext || null)
+			// Note: Commenting out options.outputContext for now because
+			//       I don't know what it's used for.
+			const session = new Session()
 			this._sessions.set(session.id, session)
 			this._activeSession = session
 
@@ -171,7 +184,7 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 	requestFrameOfReferenceTransform(type, options){
 		var that = this
-        return new Promise((resolve, reject) => {
+		return new Promise((resolve, reject) => {
 			let enqueueOrExec = function (callback) {
 				if (that._baseFrameSet) {
 					callback()
@@ -181,19 +194,28 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 			}
 
 			switch(type){
-				case 'head-model':
+				case 'viewer':
 					enqueueOrExec(function () { 
 						resolve(that._headModelMatrix) 
 					})
 					return
-				case 'eye-level':
+				case 'local':
 					enqueueOrExec(function () { 
 						resolve(that._eyeLevelMatrix) 
 					})
 					return
-				case 'stage':
-					//return that._stageMatrix
-					reject(new Error('stage not supported', type))
+				case 'local-floor':
+				case 'bounded-floor':
+
+				// @TODO: Support unbounded reference space.
+				// @TODO: Support reset event.
+				//        In ARKit, the native origin can change as the user moves around.
+				//        In unbounded, the space origin can change. But in other space
+				//        such as local and local-floor, if the origin changes, a reset event should
+				//        be triggered on the coordinate system (per the spec).
+				case 'unbounded':
+					reject(new Error('not supported', type))
+					return
 				default:
 					reject(new Error('Unsupported frame of reference type', type))
 			}
@@ -281,9 +303,8 @@ export default class ARKitDevice extends PolyfilledXRDevice {
 
 let SESSION_ID = 100
 class Session {
-	constructor(outputContext){
+	constructor(){
 		this.ended = null // boolean
-		this.outputContext = outputContext // XRPresentationContext
 		this.baseLayer = null // XRWebGLLayer
 		this.id = ++SESSION_ID
 	}
