@@ -83,7 +83,9 @@ export default class ARKitDevice extends XRDevice {
 	set depthFar(val){ this._depthFar = val }
 
 	isSessionSupported(mode){
-		return mode === 'inline' || mode === 'immersive-ar';
+		// Note: We support only immersive-ar mode for now.
+		//       See https://github.com/MozillaReality/webxr-ios-js/pull/34#discussion_r334910337
+		return mode === 'immersive-ar';
 	}
 
 	async requestSession(mode, xrSessionInit={}){
