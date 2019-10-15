@@ -34,7 +34,7 @@ export default class ARKitDevice extends XRDevice {
 		if (document.body) {
 			insertWrapperDiv();
 		} else {
-			document.addEventListener('DOMContentLoaded', ev => insertWrapperDiv);
+			document.addEventListener('DOMContentLoaded', insertWrapperDiv);
 		}
 
 		this._headModelMatrix = mat4.create() // Model and view matrix are the same
@@ -60,21 +60,21 @@ export default class ARKitDevice extends XRDevice {
 	}
 
 	static initStyles() {
-		window.addEventListener('DOMContentLoaded', () => {
-		  setTimeout(() => {
-			try {
-			  var styleEl = document.createElement('style');
-			  document.head.appendChild(styleEl);
-			  var styleSheet = styleEl.sheet;
-			  styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
-			  styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
-			  styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
-			} catch(e) {
-			  console.error('page error', e);
-			}
-		  }, 1);
-		});    
-	  }
+		const init = () => {
+			const styleEl = document.createElement('style');
+			document.head.appendChild(styleEl);
+			const styleSheet = styleEl.sheet;
+			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
+		};
+
+		if (document.body) {
+			init();
+		} else {
+			window.addEventListener('DOMContentLoaded', init);
+		}
+	}
 		
 	get depthNear(){ return this._depthNear }
 	set depthNear(val){ this._depthNear = val }
