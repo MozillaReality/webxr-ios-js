@@ -279,6 +279,25 @@ function _installExtensions(){
 
 	ARKitDevice.initStyles()
 
+	if(window.XR) {
+		// Note: The polyfill supports only immersive-ar mode for now.
+		//       See https://github.com/MozillaReality/webxr-ios-js/pull/34#discussion_r334910337
+		//       The official WebXR polyfill always accepts inline mode
+		//       so overriding XR.isSessionSupported and XR.requestSession to refuse inline mode.
+		// @TODO: Support inline mode. WebXR API specification defines that any XR Device must
+		//        support inline mode 
+		XR.prototype._isSessionSupported = XR.prototype.isSessionSupported;
+		XR.prototype._requestSession = XR.prototype.requestSession;
+		XR.prototype.isSessionSupported = function (mode) {
+			if (mode !== 'immersive-ar') return Promise.resolve(false);
+			return this._isSessionSupported(mode);
+		};
+		XR.prototype.requestSession = function (mode, xrSessionInit) {
+			if (mode !== 'immersive-ar') Promise.reject(new DOMException('Polyfill Error: only immersive-ar mode is supported.'));
+			return this._requestSession(mode, xrSessionInit);
+		};
+	}
+
 	if(window.XRSession){
 		XRSession.prototype.requestHitTest = _xrSessionRequestHitTest
 		XRSession.prototype.updateWorldSensingState = _updateWorldSensingState
