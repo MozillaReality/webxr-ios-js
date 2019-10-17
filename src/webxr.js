@@ -63,8 +63,8 @@ let _arKitWrapper = null;
 
 // Install a few proposed AR extensions to the WebXR Device API
 // by adding the methods to XR*.prototype.
-// ARKitWrapper talks to Apple ARKit so that the extended WebXR API for AR
-// basically just calls ARKitWrapper methods.
+// ARKitWrapper talks to Apple ARKit and instanciates XR resources
+// so that the extended WebXR API for AR basically just calls ARKitWrapper methods.
 
 // Anchors
 // Specification: https://github.com/immersive-web/anchors
@@ -114,9 +114,9 @@ const installAnchorsExtension = () => {
 
 	/**
 	 * Note: In the explainer XRAnchor has detach() method for anchor removal
-	 *       rather than XRSession.removeAnchor(). But it doesn't seems to be fixed yet.
-	 *       So we have XRSession.removeAnchor() for now. We should update to follow the spec
-	 *       if it's fixed.
+	 *       but it doesn't seems to be fixed yet.
+	 *       We have XRSession.removeAnchor() for now.
+	 *       We should update to follow the spec if it's fixed.
 	 *
 	 * @param anchor {XRAnchor}
 	 * @return {Promise<void>}
