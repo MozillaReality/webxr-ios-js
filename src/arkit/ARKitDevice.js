@@ -237,7 +237,7 @@ export default class ARKitDevice extends XRDevice {
 
 	endSession(sessionId) {
 		const session = this._sessions.get(sessionId);
-		if(!session || session.ended) { return; }
+		if (!session || session.ended) { return; }
 		session.ended = true;
 		if (this._activeSession === session) {
 			this._activeSession = null;
