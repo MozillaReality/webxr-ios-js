@@ -121,7 +121,7 @@ export default class ARKitWrapper extends EventTarget {
 			 * They end up as window.arkitCallback? where ? is an integer.
 			 * You can map window.arkitCallback? to ARKitWrapper instance methods using _globalCallbacksMap
 			 */
-			const callbackName = callbackbackNames[i];
+			const callbackName = callbackNames[i];
 			const name = 'arkitCallback' + i;
 			this._globalCallbacksMap[callbackName] = name;
 			window[name] = (deviceData) => {
@@ -142,7 +142,7 @@ export default class ARKitWrapper extends EventTarget {
 		this._m180 = mat4.fromZRotation(mat4.create(), 180 * PI_OVER_180);
 
 		// Set up some named global methods that the ARKit to JS bridge uses and send out custom events when they are called
-		const eventCallbacks = [
+		const eventCallbacks = {
 			arkitStartRecording: ARKitWrapper.RECORD_START_EVENT,
 			arkitStopRecording: ARKitWrapper.RECORD_STOP_EVENT,
 			arkitDidMoveBackground: ARKitWrapper.DID_MOVE_BACKGROUND_EVENT,
@@ -156,7 +156,7 @@ export default class ARKitWrapper extends EventTarget {
 			//userGrantedComputerVisionData: ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA,
 			//userGrantedWorldSensingData: ARKitWrapper.USER_GRANTED_WORLD_SENSING_DATA,
 			//onComputerVisionData: ARKitWrapper.COMPUTER_VISION_DATA
-		];
+		};
 
 		for (const key in eventCallbacks) {
 			window[key] = (detail) => {
@@ -775,7 +775,7 @@ export default class ARKitWrapper extends EventTarget {
 			}
 			this._waitingForSessionStart = true;
 
-			const newO = Object.assign({}, this._defaultOptions);
+			let newO = Object.assign({}, this._defaultOptions);
 
 			if (options !== null) {
 				newO = Object.assign(newO, options);
