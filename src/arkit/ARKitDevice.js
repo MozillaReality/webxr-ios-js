@@ -51,7 +51,7 @@ export default class ARKitDevice extends XRDevice {
 		try {
 			this._arKitWrapper = ARKitWrapper.GetOrCreate();
 			this._arWatcher = new ARWatcher(this._arKitWrapper, this);
-		} catch (e){
+		} catch (e) {
 			console.error('Error initializing the ARKit wrapper', e);
 			this._arKitWrapper = null;
 			this._arWatcher = null;
@@ -114,13 +114,13 @@ export default class ARKitDevice extends XRDevice {
 	get depthFar() { return this._depthFar; }
 	set depthFar(val) { this._depthFar = val; }
 
-	isSessionSupported(mode){
+	isSessionSupported(mode) {
 		// Note: We support only immersive-ar mode for now.
 		//       See https://github.com/MozillaReality/webxr-ios-js/pull/34#discussion_r334910337
 		return mode === 'immersive-ar';
 	}
 
-	async requestSession(mode, xrSessionInit={}){
+	async requestSession(mode, xrSessionInit={}) {
 		if (!this.isSessionSupported(mode)) {
 			console.error('Invalid session mode', mode);
 			return Promise.reject();
@@ -171,7 +171,7 @@ export default class ARKitDevice extends XRDevice {
 		return watchResult;
 	}
 
-	onBaseLayerSet(sessionId, layer){
+	onBaseLayerSet(sessionId, layer) {
 		this._sessions.get(sessionId).baseLayer = layer; // XRWebGLLayer
 		this._wrapperDiv.appendChild(layer.context.canvas);
 
@@ -191,7 +191,6 @@ export default class ARKitDevice extends XRDevice {
 
 	onFrameStart(sessionId) {
 		// TODO
-		//this._throttledLogPose()
 	}
 
 	onFrameEnd(sessionId) {
@@ -297,7 +296,7 @@ export default class ARKitDevice extends XRDevice {
 
 let SESSION_ID = 100;
 class Session {
-	constructor(){
+	constructor() {
 		this.ended = null; // boolean
 		this.baseLayer = null; // XRWebGLLayer
 		this.id = ++SESSION_ID;
