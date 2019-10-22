@@ -99,9 +99,6 @@ export default class ARKitWrapper extends EventTarget {
 		/* other anchors from ARKit.  Faces, images, results of hit testing. */
 		this._anchors = new Map();
 
-		/* synthetic anchors, currently created from hit tests relative to other anchors */
-		this._anchorOffsets = new Map();
-
 		this._timeOffsets = [];
 		this._timeOffset = 0;
 		this._timeOffsetComputed = false;
@@ -117,11 +114,21 @@ export default class ARKitWrapper extends EventTarget {
 		// Used to map a window.arkitCallback method name to an ARKitWrapper.on* method name
 		// Set up the window.arkitCallback methods that the ARKit bridge depends on
 		this._globalCallbacksMap = {}; 
-		let callbackNames = ['onInit', 'onData']
-		for(let i=0; i < callbackNames.length; i++) {
-			this._generateGlobalCallback(callbackNames[i], i);
+		const callbackNames = ['onInit', 'onData'];
+		for (let i = 0; i < callbackNames.length; i++) {
+			/*
+			 * The ARKit iOS app depends on several callbacks on `window`. This method sets them up.
+			 * They end up as window.arkitCallback? where ? is an integer.
+			 * You can map window.arkitCallback? to ARKitWrapper instance methods using _globalCallbacksMap
+			 */
+			const callbackName = callbackbackNames[i];
+			const name = 'arkitCallback' + i;
+			this._globalCallbacksMap[callbackName] = name;
+			window[name] = (deviceData) => {
+				this['_' + callbackName](deviceData);
+			};
 		}
-			
+
 		// default options for initializing ARKit
 		this._defaultOptions = {
 			location: true, // device location
@@ -130,36 +137,35 @@ export default class ARKitWrapper extends EventTarget {
 			light_intensity: true,
 			computer_vision_data: false
 		};
-		this._m90 = mat4.fromZRotation(mat4.create(), 90*PI_OVER_180);
-		this._m90neg = mat4.fromZRotation(mat4.create(), -90*PI_OVER_180);
-		this._m180 = mat4.fromZRotation(mat4.create(), 180*PI_OVER_180);
-		this._mTemp = mat4.create();
+		this._m90 = mat4.fromZRotation(mat4.create(), 90 * PI_OVER_180);
+		this._m90neg = mat4.fromZRotation(mat4.create(), -90 * PI_OVER_180);
+		this._m180 = mat4.fromZRotation(mat4.create(), 180 * PI_OVER_180);
 
 		// Set up some named global methods that the ARKit to JS bridge uses and send out custom events when they are called
 		const eventCallbacks = [
-			['arkitStartRecording', ARKitWrapper.RECORD_START_EVENT],
-			['arkitStopRecording', ARKitWrapper.RECORD_STOP_EVENT],
-			['arkitDidMoveBackground', ARKitWrapper.DID_MOVE_BACKGROUND_EVENT],
-			['arkitWillEnterForeground', ARKitWrapper.WILL_ENTER_FOREGROUND_EVENT],
-			['arkitInterrupted', ARKitWrapper.INTERRUPTED_EVENT],
-			['arkitInterruptionEnded', ARKitWrapper.INTERRUPTION_ENDED_EVENT], 
-			['arkitShowDebug', ARKitWrapper.SHOW_DEBUG_EVENT],
-			['arkitWindowResize', ARKitWrapper.WINDOW_RESIZE_EVENT],
-			['onError', ARKitWrapper.ON_ERROR],
-			['arTrackingChanged', ARKitWrapper.AR_TRACKING_CHANGED],
-			// ['userGrantedComputerVisionData', ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA],
-			// ['userGrantedWorldSensingData', ARKitWrapper.USER_GRANTED_WORLD_SENSING_DATA]
-			//,['onComputerVisionData', ARKitWrapper.COMPUTER_VISION_DATA]
+			arkitStartRecording: ARKitWrapper.RECORD_START_EVENT,
+			arkitStopRecording: ARKitWrapper.RECORD_STOP_EVENT,
+			arkitDidMoveBackground: ARKitWrapper.DID_MOVE_BACKGROUND_EVENT,
+			arkitWillEnterForeground: ARKitWrapper.WILL_ENTER_FOREGROUND_EVENT,
+			arkitInterrupted: ARKitWrapper.INTERRUPTED_EVENT,
+			arkitInterruptionEnded: ARKitWrapper.INTERRUPTION_ENDED_EVENT,
+			arkitShowDebug: ARKitWrapper.SHOW_DEBUG_EVENT,
+			arkitWindowResize: ARKitWrapper.WINDOW_RESIZE_EVENT,
+			onError: ARKitWrapper.ON_ERROR,
+			arTrackingChanged: ARKitWrapper.AR_TRACKING_CHANGED,
+			//userGrantedComputerVisionData: ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA,
+			//userGrantedWorldSensingData: ARKitWrapper.USER_GRANTED_WORLD_SENSING_DATA,
+			//onComputerVisionData: ARKitWrapper.COMPUTER_VISION_DATA
 		];
 
-		for(let i=0; i < eventCallbacks.length; i++) {
-			window[eventCallbacks[i][0]] = (detail) => {
+		for (const key in eventCallbacks) {
+			window[key] = (detail) => {
 				detail = detail || null;
 				try {
 					this.dispatchEvent(
-						eventCallbacks[i][1],
+						eventCallbacks[key],
 						new CustomEvent(
-							eventCallbacks[i][1],
+							eventCallbacks[key],
 							{
 								source: this,
 								detail: detail
@@ -167,7 +173,7 @@ export default class ARKitWrapper extends EventTarget {
 						)
 					);
 				} catch(e) {
-					console.error(eventCallbacks[i][0] + ' callback error', e);
+					console.error(key + ' callback error', e);
 				}
 			}
 		}
@@ -183,7 +189,7 @@ export default class ARKitWrapper extends EventTarget {
 			this._timeOffsets.push (( performance || Date ).now() - detail.nativeTime);
 			this._timeOffsetComputed = true;
 			this._timeOffset = 0;
-			for (var i = 0; i < this._timeOffsets.length; i++) {
+			for (let i = 0; i < this._timeOffsets.length; i++) {
 				this._timeOffset += this._timeOffsets[i];
 			}
 			this._timeOffset = this._timeOffset / this._timeOffsets.length;
@@ -192,15 +198,15 @@ export default class ARKitWrapper extends EventTarget {
 
 		// we can increase permissions, but not decrease
 		window['userGrantedComputerVisionData'] = (detail) => {
-			this._sessionCameraAccess |= detail.granted 
+			this._sessionCameraAccess |= detail.granted;
 		};
 
 		window['userGrantedWorldSensingData'] = (detail) => {
-			this._sessionWorldAccess |= detail.granted
+			this._sessionWorldAccess |= detail.granted;
 		};
 	}
 
-	static GetOrCreate(options=null){
+	static GetOrCreate(options=null) {
 		if (typeof ARKitWrapper.GLOBAL_INSTANCE === 'undefined') {
 			ARKitWrapper.GLOBAL_INSTANCE = new ARKitWrapper();
 			options = (options && typeof(options) === 'object') ? options : {};
@@ -502,7 +508,7 @@ export default class ARKitWrapper extends EventTarget {
 				imageHeight: height,
 				physicalWidth: physicalWidthInMeters,
 				callback: this._createPromiseCallback('createImageAnchor', resolve)
-			})
+			});
 		});
 	}
 
@@ -726,7 +732,7 @@ export default class ARKitWrapper extends EventTarget {
 	 */
 	stop() {
 		return new Promise((resolve, reject) => {
-			if (!this._isWatching){
+			if (!this._isWatching) {
 				resolve();
 				return;
 			}
@@ -1043,10 +1049,7 @@ export default class ARKitWrapper extends EventTarget {
   
 	_onData(data) {
 		this._rawARData = data;
-		let plane, anchor;
-
 		this._worldInformation = null;
-
 		this._timestamp = this._adjustARKitTime(data.timestamp);
 
 		// @TODO: Is creating XRLightProbe instance in each _onData()
@@ -1067,7 +1070,7 @@ export default class ARKitWrapper extends EventTarget {
 		if (data.newObjects.length) {
 			for (let i = 0; i < data.newObjects.length; i++) {
 				const element = data.newObjects[i];
-				var anchor = this._anchors.get(element.uuid);
+				const anchor = this._anchors.get(element.uuid);
 				if (anchor && anchor.deleted) {
 					anchor.deleted = false;
 				}
@@ -1115,8 +1118,8 @@ export default class ARKitWrapper extends EventTarget {
 	}
 
 	/*
-	Callback from ARKit for when sending per-frame data to onWatch is stopped
-	*/
+	 * Callback from ARKit for when sending per-frame data to onWatch is stopped
+	 */
 	_onStop(){
 		this._isWatching = false;
 	}
@@ -1125,41 +1128,23 @@ export default class ARKitWrapper extends EventTarget {
 		if (this._timeOffsetComputed) {
 			return time + this._timeOffset; 
 		} else {
-			return ( performance || Date ).now();
+			return (performance || Date).now();
 		}
 	}
 
 	_createPromiseCallback(action, resolve) {
-		const callbackName = this._generateCallbackUID(action);
+		const callbackName = 'arkitCallback_' + action + '_' + new Date().getTime() + 
+			'_' + Math.floor((Math.random() * Number.MAX_SAFE_INTEGER));
 		window[callbackName] = (data) => {
 			delete window[callbackName];
 			const wrapperCallbackName = '_on' + action[0].toUpperCase() +
 				action.slice(1);
-			if (typeof(this[wrapperCallbackName]) == 'function') {
+			if (typeof(this[wrapperCallbackName]) === 'function') {
 				this[wrapperCallbackName](data);
 			}
 			resolve(data);
 		}
 		return callbackName;
-	}
-
-	_generateCallbackUID(prefix) {
-		return 'arkitCallback_' + prefix + '_' + new Date().getTime() + 
-			'_' + Math.floor((Math.random() * Number.MAX_SAFE_INTEGER));
-	}
-
-	/*
-	 * The ARKit iOS app depends on several callbacks on `window`. This method sets them up.
-	 * They end up as window.arkitCallback? where ? is an integer.
-	 * You can map window.arkitCallback? to ARKitWrapper instance methods using _globalCallbacksMap
-	 */
-	_generateGlobalCallback(callbackName, num) {
-		const name = 'arkitCallback' + num;
-		this._globalCallbacksMap[callbackName] = name;
-		const self = this;
-		window[name] = function(deviceData) {
-			self['_' + callbackName](deviceData);
-		}
 	}
 
 	/*
@@ -1242,28 +1227,24 @@ export default class ARKitWrapper extends EventTarget {
 		// screen, since any other setup would need to use the full orientation (and probably 
 		// wouldn't be rotating the content / UI)
 		detail.camera.arCamera = true;
-		var orientation = detail.camera.interfaceOrientation;
+		const orientation = detail.camera.interfaceOrientation;
 		detail.camera.viewMatrix = detail.camera.inverse_viewMatrix;
-		// mat4.copy(this._mTemp, detail.camera.viewMatrix);
 		switch (orientation) {
 			case 1: 
 				// rotate by -90;
 				detail.camera.cameraOrientation = -90;
-				// mat4.multiply(detail.camera.viewMatrix, this._mTemp, this._m90neg);
 				break;
 			case 2: 
 				// rotate by 90;
 				detail.camera.cameraOrientation = 90;
-				// mat4.multiply(detail.camera.viewMatrix, this._mTemp, this._m90);
 				break;
 			case 3: 
-				detail.camera.cameraOrientation = 0;
 				// rotate by nothing
+				detail.camera.cameraOrientation = 0;
 				break;
 			case 4: 
 				// rotate by 180;
 				detail.camera.cameraOrientation = 180;
-				// mat4.multiply(detail.camera.viewMatrix, this._mTemp, this._m180);
 				break;
 		}
 
@@ -1276,7 +1257,7 @@ export default class ARKitWrapper extends EventTarget {
 				break;
 		}
 
-		var xrVideoFrame = new XRVideoFrame(detail.frame.buffers, detail.frame.pixelFormat, this._adjustARKitTime(detail.frame.timestamp), detail.camera);
+		const xrVideoFrame = new XRVideoFrame(detail.frame.buffers, detail.frame.pixelFormat, this._adjustARKitTime(detail.frame.timestamp), detail.camera);
 		try {
 			this.dispatchEvent(
 				ARKitWrapper.COMPUTER_VISION_DATA,
@@ -1333,14 +1314,14 @@ ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA = 'user-granted-cv-data';
 ARKitWrapper.USER_GRANTED_WORLD_SENSING_DATA = 'user-granted-world-sensing-data';
 
 // ARKit Detection Image Orientations
-ARKitWrapper.ORIENTATION_UP = 1;        	// 0th row at top,    0th column on left   - default orientation
-ARKitWrapper.ORIENTATION_UP_MIRRORED = 2;    	// 0th row at top,    0th column on right  - horizontal flip
-ARKitWrapper.ORIENTATION_DOWN = 3;     		// 0th row at bottom, 0th column on right  - 180 deg rotation
-ARKitWrapper.ORIENTATION_DOWN_MIRRORED = 4;  	// 0th row at bottom, 0th column on left   - vertical flip
-ARKitWrapper.ORIENTATION_LEFT_MIRRORED = 5;  	// 0th row on left,   0th column at top
-ARKitWrapper.ORIENTATION_RIGHT = 6;         		// 0th row on right,  0th column at top    - 90 deg CW
-ARKitWrapper.ORIENTATION_RIGHT_MIRRORED = 7; 	// 0th row on right,  0th column on bottom
-ARKitWrapper.ORIENTATION_LEFT = 8;				// 0th row on left,   0th column at bottom - 90 deg CCW
+ARKitWrapper.ORIENTATION_UP = 1;		// 0th row at top,    0th column on left   - default orientation
+ARKitWrapper.ORIENTATION_UP_MIRRORED = 2;	// 0th row at top,    0th column on right  - horizontal flip
+ARKitWrapper.ORIENTATION_DOWN = 3;		// 0th row at bottom, 0th column on right  - 180 deg rotation
+ARKitWrapper.ORIENTATION_DOWN_MIRRORED = 4;	// 0th row at bottom, 0th column on left   - vertical flip
+ARKitWrapper.ORIENTATION_LEFT_MIRRORED = 5;	// 0th row on left,   0th column at top
+ARKitWrapper.ORIENTATION_RIGHT = 6;		// 0th row on right,  0th column at top    - 90 deg CW
+ARKitWrapper.ORIENTATION_RIGHT_MIRRORED = 7;	// 0th row on right,  0th column on bottom
+ARKitWrapper.ORIENTATION_LEFT = 8;		// 0th row on left,   0th column at bottom - 90 deg CCW
 
 // world mapping status
 ARKitWrapper.WEB_AR_WORLDMAPPING_NOT_AVAILABLE = "ar_worldmapping_not_available";
