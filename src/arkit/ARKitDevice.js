@@ -157,8 +157,6 @@ export default class ARKitDevice extends XRDevice {
 		});
 
 		const watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
-			// Note: Commenting out options.outputContext for now because
-			//       I don't know what it's used for.
 			const session = new Session();
 			this._sessions.set(session.id, session);
 			this._activeSession = session;
