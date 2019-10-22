@@ -81,14 +81,14 @@ const installAnchorsExtension = () => {
 	 *       Then adding the third argument frame {XRFrame} here as temporal workaround.
 	 *       We should update to follow the spec if the anchor spec is updated.
 	 *
-	 * @param value {XRHitResult|Float32Arra}
+	 * @param value {XRHitResult|Float32Array}
 	 * @param referenceSpace {XRReferenceSpace}
 	 * @param frame {XRFrame}
 	 * @return {Promise<XRAnchor>}
 	 */
 	XRSession.prototype.addAnchor = async function addAnchor(value, referenceSpace, frame) {
 		if (value instanceof XRHitResult) {
-			return _arKitWrapper.createAnchorFromHit(value._hit)
+			return _arKitWrapper.createAnchorFromHit(value._hit);
 		} else if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				// need to get the data in eye-level reference frame (local reference space)
