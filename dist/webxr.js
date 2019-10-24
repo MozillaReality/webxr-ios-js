@@ -2168,27 +2168,7 @@ function multiply$14(out, a, b) {
 
 
 
-function fromZRotation$2(out, rad) {
-  let s = Math.sin(rad);
-  let c = Math.cos(rad);
-  out[0]  = c;
-  out[1]  = s;
-  out[2]  = 0;
-  out[3]  = 0;
-  out[4] = -s;
-  out[5] = c;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[10] = 1;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
+
 
 
 function getTranslation$3(out, mat) {
@@ -3264,15 +3244,14 @@ let throttledConsoleLog = throttle(function(...params){
 	console.log(...params);
 }, 1000);
 
-const PI_OVER_180 = Math.PI / 180.0;
 class ARKitWrapper extends EventTarget {
-	constructor(){
+	constructor() {
 		super();
-		if(ARKitWrapper.HasARKit() === false){
-			throw new Error('ARKitWrapper will only work in Mozilla\'s ARDemo test app')
+		if (ARKitWrapper.HasARKit() === false) {
+			throw new Error('ARKitWrapper will only work in Mozilla\'s ARDemo test app');
 		}
-		if(typeof ARKitWrapper.GLOBAL_INSTANCE !== 'undefined'){
-			throw new Error('ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the global instance.')
+		if (typeof ARKitWrapper.GLOBAL_INSTANCE !== 'undefined') {
+			throw new Error('ARKitWrapper is a singleton. Use ARKitWrapper.GetOrCreate() to get the global instance.');
 		}
 		this._timestamp = 0;
 		this._lightProbe = null;
@@ -3299,17 +3278,11 @@ class ARKitWrapper extends EventTarget {
 		this._viewMatrix = new Float32Array(16);
 		this._cameraTransform = new Float32Array(16);
 		this._anchors = new Map();
-		this._anchorOffsets = new Map();
 		this._timeOffsets = [];
 		this._timeOffset = 0;
 		this._timeOffsetComputed = false;
 		this._dataBeforeNext = 0;
 		this._worldMappingStatus = ARKitWrapper.WEB_AR_WORLDMAPPING_NOT_AVAILABLE;
-		this._globalCallbacksMap = {};
-		let callbackNames = ['onInit', 'onData'];
-		for(let i=0; i < callbackNames.length; i++){
-			this._generateGlobalCallback(callbackNames[i], i);
-		}
 		this._defaultOptions = {
 			location: true,
 			camera: true,
@@ -3317,30 +3290,26 @@ class ARKitWrapper extends EventTarget {
 			light_intensity: true,
 			computer_vision_data: false
 		};
-		this._m90 = fromZRotation$2(create$14(), 90*PI_OVER_180);
-		this._m90neg = fromZRotation$2(create$14(), -90*PI_OVER_180);
-		this._m180 = fromZRotation$2(create$14(), 180*PI_OVER_180);
-		this._mTemp = create$14();
-		let eventCallbacks = [
-			['arkitStartRecording', ARKitWrapper.RECORD_START_EVENT],
-			['arkitStopRecording', ARKitWrapper.RECORD_STOP_EVENT],
-			['arkitDidMoveBackground', ARKitWrapper.DID_MOVE_BACKGROUND_EVENT],
-			['arkitWillEnterForeground', ARKitWrapper.WILL_ENTER_FOREGROUND_EVENT],
-			['arkitInterrupted', ARKitWrapper.INTERRUPTED_EVENT],
-			['arkitInterruptionEnded', ARKitWrapper.INTERRUPTION_ENDED_EVENT],
-			['arkitShowDebug', ARKitWrapper.SHOW_DEBUG_EVENT],
-			['arkitWindowResize', ARKitWrapper.WINDOW_RESIZE_EVENT],
-			['onError', ARKitWrapper.ON_ERROR],
-			['arTrackingChanged', ARKitWrapper.AR_TRACKING_CHANGED],
-		];
-		for(let i=0; i < eventCallbacks.length; i++){
-			window[eventCallbacks[i][0]] = (detail) => {
+		const eventCallbacks = {
+			arkitStartRecording: ARKitWrapper.RECORD_START_EVENT,
+			arkitStopRecording: ARKitWrapper.RECORD_STOP_EVENT,
+			arkitDidMoveBackground: ARKitWrapper.DID_MOVE_BACKGROUND_EVENT,
+			arkitWillEnterForeground: ARKitWrapper.WILL_ENTER_FOREGROUND_EVENT,
+			arkitInterrupted: ARKitWrapper.INTERRUPTED_EVENT,
+			arkitInterruptionEnded: ARKitWrapper.INTERRUPTION_ENDED_EVENT,
+			arkitShowDebug: ARKitWrapper.SHOW_DEBUG_EVENT,
+			arkitWindowResize: ARKitWrapper.WINDOW_RESIZE_EVENT,
+			onError: ARKitWrapper.ON_ERROR,
+			arTrackingChanged: ARKitWrapper.AR_TRACKING_CHANGED,
+		};
+		for (const key in eventCallbacks) {
+			window[key] = (detail) => {
 				detail = detail || null;
 				try {
 					this.dispatchEvent(
-						eventCallbacks[i][1],
+						eventCallbacks[key],
 						new CustomEvent(
-							eventCallbacks[i][1],
+							eventCallbacks[key],
 							{
 								source: this,
 								detail: detail
@@ -3348,7 +3317,7 @@ class ARKitWrapper extends EventTarget {
 						)
 					);
 				} catch(e) {
-					console.error(eventCallbacks[i][0] + ' callback error', e);
+					console.error(key + ' callback error', e);
 				}
 			};
 		}
@@ -3356,10 +3325,10 @@ class ARKitWrapper extends EventTarget {
 			this._onComputerVisionData(detail);
 		};
 		window['setNativeTime'] = (detail) => {
-			this._timeOffsets.push (( performance || Date ).now() - detail.nativeTime);
+			this._timeOffsets.push((performance || Date).now() - detail.nativeTime);
 			this._timeOffsetComputed = true;
 			this._timeOffset = 0;
-			for (var i = 0; i < this._timeOffsets.length; i++) {
+			for (let i = 0; i < this._timeOffsets.length; i++) {
 				this._timeOffset += this._timeOffsets[i];
 			}
 			this._timeOffset = this._timeOffset / this._timeOffsets.length;
@@ -3371,11 +3340,12 @@ class ARKitWrapper extends EventTarget {
 			this._sessionWorldAccess |= detail.granted;
 		};
 	}
-	static GetOrCreate(options=null){
-		if(typeof ARKitWrapper.GLOBAL_INSTANCE === 'undefined'){
-			ARKitWrapper.GLOBAL_INSTANCE = new ARKitWrapper();
-			options = (options && typeof(options) == 'object') ? options : {};
-			let defaultUIOptions = {
+	static GetOrCreate(options=null) {
+		if (typeof ARKitWrapper.GLOBAL_INSTANCE === 'undefined') {
+			const instance = new ARKitWrapper();
+			ARKitWrapper.GLOBAL_INSTANCE = instance;
+			options = (options && typeof(options) === 'object') ? options : {};
+			const defaultUIOptions = {
 				browser: true,
 				points: true,
 				focus: false,
@@ -3389,563 +3359,142 @@ class ARKitWrapper extends EventTarget {
 				debug: true,
 				statistics: false
 			};
-			let uiOptions = (typeof(options.ui) == 'object') ? options.ui : {};
+			const uiOptions = (typeof(options.ui) === 'object') ? options.ui : {};
 			options.ui = Object.assign(defaultUIOptions, uiOptions);
 			options.geometry_arrays = true;
 			XRMesh.setUseGeomArrays();
-			ARKitWrapper.GLOBAL_INSTANCE._sendInit(options);
+			console.log('----INIT');
+			instance._initAR(options).then((deviceId) => {
+				instance._deviceId = deviceId;
+				instance._isInitialized = true;
+				try {
+					instance.dispatchEvent(
+						ARKitWrapper.INIT_EVENT,
+						new CustomEvent(ARKitWrapper.INIT_EVENT, {
+							source: instance
+						})
+					);
+				} catch(e) {
+					console.error('INIT_EVENT event error', e);
+				}
+			});
 		}
-		return ARKitWrapper.GLOBAL_INSTANCE
+		return ARKitWrapper.GLOBAL_INSTANCE;
 	}
-	static HasARKit(){
-		return typeof window.webkit !== 'undefined'
+	static HasARKit() {
+		return typeof window.webkit !== 'undefined';
 	}
-	get deviceId(){ return this._deviceId }
-	get hasSession(){ return this._isWatching }
-	get isInitialized(){ return this._isInitialized }
-	_sendInit(options){
-		console.log('----INIT');
-		window.webkit.messageHandlers.initAR.postMessage({
+	get deviceId() { return this._deviceId; }
+	get hasSession() { return this._isWatching; }
+	get isInitialized() { return this._isInitialized; }
+	_sendMessage(actionName, options={}, mustBeInitialized=true, callback=true) {
+		return new Promise((resolve, reject) => {
+			if (mustBeInitialized && !this._isInitialized) {
+				reject(new Error('ARKit is not initialized'));
+				return;
+			}
+			const extraOptions = {};
+			if (callback) {
+				const callbackName = 'arkitCallback_' + actionName + '_' + new Date().getTime() +
+					'_' + Math.floor((Math.random() * Number.MAX_SAFE_INTEGER));
+				window[callbackName] = (data) => {
+					delete window[callbackName];
+					resolve(data);
+				};
+				extraOptions.callback = callbackName;
+			}
+			window.webkit.messageHandlers[actionName].postMessage(Object.assign({}, options, extraOptions));
+			if (!callback) { resolve(); }
+		});
+	}
+	_initAR(options) {
+		return this._sendMessage('initAR', {
+			options: options
+		}, false);
+	}
+	_requestSession(options, dataCallbackName) {
+		return this._sendMessage('requestSession', {
 			options: options,
-			callback: this._globalCallbacksMap.onInit
+			data_callback: dataCallbackName
 		});
 	}
-	waitForInit(){
-		return new Promise((resolve, reject) => {
-			if(this._isInitialized){
-				resolve();
-				return
-			}
-			const callback = () => {
-				this.removeEventListener(ARKitWrapper.INIT_EVENT, callback, false);
-				resolve();
-			};
-			this.addEventListener(ARKitWrapper.INIT_EVENT, callback, false);
-		})
-	}
-	_onInit(deviceId){
-		this._deviceId = deviceId;
-		this._isInitialized = true;
-		try {
-			this.dispatchEvent(
-				ARKitWrapper.INIT_EVENT,
-				new CustomEvent(ARKitWrapper.INIT_EVENT, {
-					source: this
-				})
-			);
-        } catch(e) {
-            console.error('INIT_EVENT event error', e);
-        }
-	}
-	hitTest(x, y, types=ARKitWrapper.HIT_TEST_TYPE_ALL){
-		return new Promise((resolve, reject) => {
-			if (!this._isInitialized){
-				reject(new Error('ARKit is not initialized'));
-				return;
-			}
-			window.webkit.messageHandlers.hitTest.postMessage({
-				x: x,
-				y: y,
-				type: types,
-				callback: this._createPromiseCallback('hitTest', resolve)
-			});
-		})
-	}
-	pickBestHit(hits){
-		if(hits.length === 0) return null
-		let planeResults = hits.filter(
-			hitTestResult => hitTestResult.type != ARKitWrapper.HIT_TEST_TYPE_FEATURE_POINT
-		);
-		let planeExistingUsingExtentResults = planeResults.filter(
-			hitTestResult => hitTestResult.type == ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_EXTENT
-		);
-		let planeExistingResults = planeResults.filter(
-			hitTestResult => hitTestResult.type == ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE
-		);
-		if (planeExistingUsingExtentResults.length) {
-			planeExistingUsingExtentResults = planeExistingUsingExtentResults.sort((a, b) => a.distance - b.distance);
-			return planeExistingUsingExtentResults[0]
-		} else if (planeExistingResults.length) {
-			planeExistingResults = planeExistingResults.sort((a, b) => a.distance - b.distance);
-			return planeExistingResults[0]
-		} else if (planeResults.length) {
-			planeResults = planeResults.sort((a, b) => a.distance - b.distance);
-			return planeResults[0]
-		} else {
-			return hits[0]
-		}
-		return null
-	}
-  _addAnchor(uid, transform){
-		return new Promise((resolve, reject) => {
-			if (!this._isInitialized){
-				reject(new Error('ARKit is not initialized'));
-				return;
-			}
-			window.webkit.messageHandlers.addAnchor.postMessage({
-				uuid: uid,
-				transform: transform,
-				callback: this._createPromiseCallback('addAnchor', resolve)
-			});
-		})
-	}
-	createAnchor(anchorInWorldMatrix) {
-		return new Promise((resolve, reject) => {
-			var tempAnchor = new XRAnchor(anchorInWorldMatrix, null, this._timestamp);
-			this._addAnchor(tempAnchor.uid, anchorInWorldMatrix).then(detail => {
-				if (detail.error) {
-					reject(detail.error);
-					return;
-				}
-				var anchor = this._anchors.get(detail.uuid);
-				if(!anchor){
-					this._anchors.set(detail.uuid, tempAnchor);
-					resolve(tempAnchor);
-				}else{
-					anchor.placeholder = false;
-					anchor.deleted = false;
-					anchor.updateModelMatrix(detail.transform, this._timestamp);
-					resolve(anchor);
-				}
-			}).catch((...params) => {
-				console.error('could not create anchor', ...params);
-				reject();
-			});
+	_hitTest(x, y, types) {
+		return this._sendMessage('hitTest', {
+			x: x,
+			y: y,
+			type: types
 		});
 	}
-	createAnchorFromHit(hit) {
-		return new Promise((resolve, reject) => {
-			if (hit.anchor_transform) {
-				let anchor = this._anchors.get(hit.uuid);
-				if(!anchor) {
-					anchor = new XRAnchor(hit.anchor_transform, hit.uuid, this._timestamp);
-					console.log('created dummy anchor from hit test');
-					anchor.placeholder = true;
-					this._anchors.set(hit.uuid, anchor);
-				}
-				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform);
-				resolve(anchorOffset);
-			} else {
-				let anchor = this._anchors.get(hit.uuid);
-				if(!anchor){
-					anchor = new XRAnchor(hit.world_transform, hit.uuid);
-					console.log('created dummy anchor (not a plane) from hit test');
-					anchor.placeholder = true;
-					this._anchors.set(hit.uuid, anchor);
-				} else {
-					anchor.placeholder = false;
-					anchor.deleted = false;
-					console.log('hit test resulted in a hit on an existing anchor, without an offset');
-				}
-				resolve(anchor);
-			}
-		})
+	_addAnchor(uid, transform) {
+		return this._sendMessage('addAnchor', {
+			uuid: uid,
+			transform: transform
+		});
 	}
-	removeAnchor(anchor) {
-		let _anchor = this._anchors.get(anchor.uid);
-		if (_anchor.placeholder) {
-			this._anchors.delete(anchor.uid);
-			return
-		}
-		if (_anchor) {
-			_anchor.deleted = true;
-		}
-		if (!anchor instanceof XRAnchorOffset) {
-			window.webkit.messageHandlers.removeAnchors.postMessage([anchor.uid]);
-		}
+	_removeAnchors(uids) {
+		return new Promise((resolve) => {
+			window.webkit.messageHandlers.removeAnchors.postMessage(uids);
+			resolve();
+		});
 	}
-  _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
-		return new Promise((resolve, reject) => {
-            if (!this._isInitialized){
-                reject(new Error('ARKit is not initialized'));
-                return;
-            }
-            let b64 = base64.encode(buffer);
-            window.webkit.messageHandlers.createImageAnchor.postMessage({
-                uid: uid,
-                buffer: b64,
-                imageWidth: width,
-                imageHeight: height,
-                physicalWidth: physicalWidthInMeters,
-								callback: this._createPromiseCallback('createImageAnchor', resolve)
-            });
-		})
-	}
-  createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
-		return new Promise((resolve, reject) => {
-			this._createDetectionImage(uid, buffer, width, height, physicalWidthInMeters).then(detail => {
-				if (detail.error) {
-					reject(detail.error);
-					return;
-				}
-				if (!detail.created) {
-					reject(null);
-					return;
-				}
-				resolve();
-			}).catch((...params) => {
-				console.error('could not create image', ...params);
-				reject();
-			});
+	_createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		return this._sendMessage('createImageAnchor', {
+			uid: uid,
+			buffer: base64.encode(buffer),
+			imageWidth: width,
+			imageHeight: height,
+			physicalWidth: physicalWidthInMeters
 		});
 	}
 	_destroyDetectionImage(uid) {
-		return new Promise((resolve, reject) => {
-            if (!this._isInitialized){
-                reject(new Error('ARKit is not initialized'));
-                return;
-						}
-            window.webkit.messageHandlers.destroyImageAnchor.postMessage({
-                uid: uid,
-								callback: this._createPromiseCallback('destroyImageAnchor', resolve)
-            });
-		})
-	}
-  destroyDetectionImage(uid) {
-		return new Promise((resolve, reject) => {
-			this._destroyDetectionImage(uid).then(detail => {
-				if (detail.error) {
-					reject(detail.error);
-					return;
-				}
-				resolve();
-			}).catch((...params) => {
-				console.error('could not destroy image', ...params);
-				reject();
-			});
+		return this._sendMessage('destroyImageAnchor', {
+			uid: uid
 		});
 	}
 	_activateDetectionImage(uid, trackable = false) {
-        return new Promise((resolve, reject) => {
-            if (!this._isInitialized){
-                reject(new Error('ARKit is not initialized'));
-                return;
-            }
-            window.webkit.messageHandlers.activateDetectionImage.postMessage({
-								uid: uid,
-								trackable: trackable,
-                callback: this._createPromiseCallback('activateDetectionImage', resolve)
-            });
-        })
-	}
-	activateDetectionImage(uid, trackable = false) {
-		return new Promise((resolve, reject) => {
-			var anchor = this._anchors.get(uid);
-			if (anchor && !anchor.deleted) {
-				resolve(anchor);
-				return
-			}
-			this._activateDetectionImage(uid, trackable).then(detail => {
-				if (detail.error) {
-					reject(detail.error);
-					
-				}
-				if (!detail.activated) {
-					reject(null);
-					return;
-				}
-				this._createOrUpdateAnchorObject(detail.imageAnchor);
-				detail.imageAnchor.object.deleted = false;
-				resolve(detail.imageAnchor.object);
-			}).catch((...params) => {
-				console.error('could not activate image', ...params);
-				reject();
-			});
+		return this._sendMessage('activateDetectionImage', {
+			uid: uid,
+			trackable: trackable
 		});
 	}
 	_deactivateDetectionImage(uid) {
-		return new Promise((resolve, reject) => {
-				if (!this._isInitialized){
-						reject(new Error('ARKit is not initialized'));
-						return;
-				}
-				window.webkit.messageHandlers.deactivateDetectionImage.postMessage({
-						uid: uid,
-						callback: this._createPromiseCallback('deactivateDetectionImage', resolve)
-				});
-		})
-	}
-	deactivateDetectionImage(uid) {
-		return new Promise((resolve, reject) => {
-			this._deactivateDetectionImage(uid).then(detail => {
-				if (detail.error) {
-					reject(detail.error);
-					
-				}
-				var anchor = this._anchors.get(uid);
-				if (anchor) {
-					console.warn("anchor for image target '" + uid + "' still exists after deactivation");
-					this.removeAnchor(anchor);
-				}
-				resolve();
-			}).catch((...params) => {
-				console.error('could not activate image', ...params);
-				reject();
-			});
+		return this._sendMessage('deactivateDetectionImage', {
+			uid: uid,
 		});
 	}
-	setNumberOfTrackedImages(count) {
-		if (typeof(count) != "number") {
-			count = 0;
-		}
-		window.webkit.messageHandlers.setNumberOfTrackedImages.postMessage({ numberOfTrackedImages: count });
+	_setNumberOfTrackedImages(count) {
+		this._sendMessage('setNumberOfTrackedImages', {
+			numberOfTrackedImages: typeof(count) === 'number' ? count : 0
+		}, true, false);
 	}
 	_getWorldMap() {
-		return new Promise((resolve, reject) => {
-					if (!this._isInitialized){
-							reject(new Error('ARKit is not initialized'));
-							return;
-					}
-					window.webkit.messageHandlers.getWorldMap.postMessage({
-							callback: this._createPromiseCallback('getWorldMap', resolve)
-					});
-		})
+		return this._sendMessage('getWorldMap');
 	}
-	getWorldMap() {
-		return new Promise((resolve, reject) => {
-			this._getWorldMap().then(ARKitWorldMap => {
-				if (ARKitWorldMap.saved === true) {
-						resolve(ARKitWorldMap.worldMap);
-				} else if (ARKitWorldMap.error !== null) {
-						reject(ARKitWorldMap.error);
-						return;
-				} else {
-						reject(null);
-						return;
-				}
-			}).catch((...params) => {
-				console.error('could not get world map', ...params);
-				reject();
-			});
-		})
-	}
-	setWorldMap(worldMap) {
-		return new Promise((resolve, reject) => {
-					if (!this._isInitialized){
-							reject(new Error('ARKit is not initialized'));
-							return;
-					}
-					window.webkit.messageHandlers.setWorldMap.postMessage({
-						worldMap: worldMap.worldMap,
-							callback: this._createPromiseCallback('setWorldMap', resolve)
-					});
-		})
-	}
-	getLightProbe() {
-		return new Promise((resolve, reject) => {
-			if (this._lightProbe) {
-				resolve(this._lightProbe);
-			} else {
-				reject(new Error('Not populated yet'));
-			}
+	_setWorldMap(worldMap) {
+		return this._sendMessage('setWorldMap', {
+			worldMap: worldMap.worldMap
 		});
 	}
-	stop(){
-		return new Promise((resolve, reject) => {
-			if (!this._isWatching){
-				resolve();
-				return;
-			}
-			console.log('----STOP');
-			window.webkit.messageHandlers.stopAR.postMessage({
-				callback: this._createPromiseCallback('stop', resolve)
-			});
-		})
+	_stop() {
+		return this._sendMessage('stop');
 	}
-	watch(options=null){
-		return new Promise((resolve, reject) => {
-			if (!this._isInitialized){
-				reject("ARKitWrapper hasn't been initialized yet");
-				return
-			}
-			if (this._waitingForSessionStart){
-				reject("ARKitWrapper startSession called, waiting to finish");
-				return
-			}
-			if(this._isWatching){
-				resolve({
-					"cameraAccess": this._sessionCameraAccess,
-					"worldAccess": this._sessionWorldAccess,
-					"webXRAccess": true
-				});
-				return
-			}
-			this._waitingForSessionStart = true;
-			var newO = Object.assign({}, this._defaultOptions);
-			if(options != null) {
-				newO = Object.assign(newO, options);
-			}
-			this._requestedPermissions.cameraAccess = newO.videoFrames;
-			this._requestedPermissions.worldAccess = newO.worldSensing;
-			if (newO.videoFrames) {
-				delete newO.videoFrames;
-				newO.computer_vision_data = true;
-			}
-			const data = {
-				options: newO,
-				callback: this._createPromiseCallback('requestSession', (results) => {
-					if (!results.webXRAccess) {
-						reject("user did not give permission to start a webxr session");
-						return
-					}
-					this._waitingForSessionStart = false;
-					this._isWatching = true;
-					this._currentPermissions.cameraAccess = results.cameraAccess;
-					this._currentPermissions.worldAccess = results.worldAccess;
-					resolve(results);
-				}),
-				data_callback: this._globalCallbacksMap.onData
-			};
-			console.log('----WATCH');
-			window.webkit.messageHandlers.requestSession.postMessage(data);
-		})
+	_setUIOptions(options) {
+		return this._sendMessage('setUIOptions', options, true, false);
 	}
-	setUIOptions(options){
-		window.webkit.messageHandlers.setUIOptions.postMessage(options);
+	_onUpdate() {
+		return this._sendMessage('onUpdate', {}, true, false);
 	}
-	_createOrUpdateAnchorObject(element) {
-		if(element.plane_center){
-			var anchor = this._anchors.get(element.uuid);
-			if(!anchor || anchor.placeholder){
-				var planeObject = new XRPlaneMesh(element.transform,
-					element.plane_center,
-					[element.plane_extent.x, element.plane_extent.z],
-					element.plane_alignment,
-					element.geometry,
-					element.uuid, this._timestamp);
-				if (anchor) {
-					try {
-						anchor.dispatchEvent("replaceAnchor",
-							new CustomEvent("replaceAnchor", {
-								source: anchor,
-								detail: planeObject
-							})
-						);
-					} catch(e) {
-							console.error('replaceAnchor event error', e);
-					}
-					console.log('replaced dummy anchor created from hit test with plane');
-					this._anchors.delete(element.uuid);
-				}
-				this._anchors.set(element.uuid, planeObject);
-				element.object = planeObject;
-			} else if (anchor) {
-				anchor.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp);
-				element.object = anchor;
-			}
-		} else {
-			var anchor = this._anchors.get(element.uuid);
-			if(!anchor || anchor.placeholder) {
-				let anchorObject;
-				switch (element.type) {
-					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						anchorObject = new XRFaceMesh(element.transform, element.geometry, element.blendShapes,  element.uuid, this._timestamp);
-						break
-					case ARKitWrapper.ANCHOR_TYPE_ANCHOR:
-						anchorObject = new XRAnchor(element.transform, element.uuid, this._timestamp);
-						break
-					case ARKitWrapper.ANCHOR_TYPE_IMAGE:
-						anchorObject = new XRImageAnchor(element.transform, element.uuid, this._timestamp);
-						break
-				}
-				if (anchor) {
-						try {
-						anchor.dispatchEvent("replaceAnchor",
-							new CustomEvent("replaceAnchor", {
-								source: anchor || mesh,
-								detail: anchorObject
-							})
-						);
-					} catch(e) {
-							console.error('replaceAnchor event error', e);
-					}
-					console.log('replaced dummy anchor created from hit test with new anchor');
-				}
-						this._anchors.set(element.uuid, anchorObject);
-				element.object = anchorObject;
-			} else {
-				anchor = anchor;
-				switch (element.type) {
-					case ARKitWrapper.ANCHOR_TYPE_FACE:
-						anchor.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp);
-						break
-					default:
-						anchor.updateModelMatrix(element.transform, this._timestamp);
-						break;
-				}
-				element.object = anchor;
-			}
-		}
+	_requestComputerVisionData() {
+		return this._sendMessage('requestComputerVisionData', {}, true, false);
 	}
-	updateWorldSensingState(options) {
-		if (options.hasOwnProperty("meshDetectionState") && this._currentPermissions.worldAccess) {
-			this._worldSensingState.meshDetectionState = options.meshDetectionState.enabled || false;
-		} else {
-			this._worldSensingState.meshDetectionState = false;
-		}
-		return this._worldSensingState
+	_startSendingComputerVisionData() {
+		return this._sendMessage('startSendingComputerVisionData', {}, true, false);
 	}
-	getWorldInformation() {
-		if (this._worldInformation) {
-			return this._worldInformation
-		}
-		let state = {};
-		if (this._worldSensingState.meshDetectionState) {
-			state.meshes = [];
-			this._anchors.forEach(anchor => {
-				if (anchor.isMesh() && !anchor.deleted && !anchor.placeholder) {
-					state.meshes.push(anchor);
-				}
-			});
-		}
-		this._worldInformation = state;
-		return state
+	_stopSendingComputerVisionData() {
+		return this._sendMessage('stopSendingComputerVisionData', {}, true, false);
 	}
-	get hasData(){ return this._rawARData !== null }
-	_getData(key=null){
-		if (!key){
-			return this._rawARData
-		}
-		if(this._rawARData && typeof this._rawARData[key] !== 'undefined'){
-			return this._rawARData[key]
-		}
-		return null
-	}
-	requestAnimationFrame(callback, ...params) {
-		this._rAF_callback = callback;
-		this._rAF_callbackParams = params;
-	}
-	_do_rAF() {
-		if (this._rAF_callback) {
-			var _callback = this._rAF_callback;
-			var _params = this._rAF_callbackParams;
-			this._rAF_callback = null;
-			this._rAF_callbackParams = [];
-			return window.requestAnimationFrame((...params) => {
-					this.startingRender();
-					try {
-						_callback(..._params);
-					} catch(e) {
-						console.error('application callback error: ', e);
-					}
-					this.finishedRender();
-			})
-		}
-	}
-	finishedRender() {
-		this._dataBeforeNext = 0;
-		this._anchors.forEach(anchor => {
-			anchor.clearChanged();
-		});
-		window.webkit.messageHandlers.onUpdate.postMessage({});
-	}
-	startingRender() {
-		if (this._dataBeforeNext > 1) {
-		}
-	}
-	_onData(data){
+	_onData(data) {
 		this._rawARData = data;
-		var plane, anchor;
 		this._worldInformation = null;
 		this._timestamp = this._adjustARKitTime(data.timestamp);
 		this._lightProbe = new XRLightProbe({
@@ -3955,29 +3504,29 @@ class ARKitWrapper extends EventTarget {
 		copy$14(this._viewMatrix, data.camera_view);
 		copy$14(this._projectionMatrix, data.projection_camera);
 		this._worldMappingStatus = data.worldMappingStatus;
-		if(data.newObjects.length){
+		if (data.newObjects.length) {
 			for (let i = 0; i < data.newObjects.length; i++) {
 				const element = data.newObjects[i];
-				var anchor = this._anchors.get(element.uuid);
+				const anchor = this._anchors.get(element.uuid);
 				if (anchor && anchor.deleted) {
 					anchor.deleted = false;
 				}
 				this._createOrUpdateAnchorObject(element);
 			}
 		}
-		if(data.removedObjects.length){
+		if (data.removedObjects.length) {
 			for (let i = 0; i < data.removedObjects.length; i++) {
 				const element = data.removedObjects[i];
-					const anchor = this._anchors.get(element);
-					if (anchor) {
-						anchor.notifyOfRemoval();
-						this._anchors.delete(element);
-					} else {
-						console.error("app signalled removal of non-existant anchor/plane");
-					}
+				const anchor = this._anchors.get(element);
+				if (anchor) {
+					anchor.notifyOfRemoval();
+					this._anchors.delete(element);
+				} else {
+					console.error("app signalled removal of non-existant anchor/plane");
+				}
 			}
 		}
-		if(data.objects.length){
+		if (data.objects.length) {
 			for (let i = 0; i < data.objects.length; i++) {
 				const element = data.objects[i];
 				this._createOrUpdateAnchorObject(element);
@@ -3992,47 +3541,12 @@ class ARKitWrapper extends EventTarget {
 				})
 			);
 		} catch(e) {
-				console.error('WATCH_EVENT event error', e);
+			console.error('WATCH_EVENT event error', e);
 		}
 		if (this._rAF_callback) {
 			this._do_rAF();
 		}
 		this._dataBeforeNext++;
-	}
-	_onStop(){
-		this._isWatching = false;
-	}
-	_adjustARKitTime(time) {
-		if (this._timeOffsetComputed) {
-			return time + this._timeOffset;
-		} else {
-			return ( performance || Date ).now()
-		}
-	}
-	_createPromiseCallback(action, resolve){
-		const callbackName = this._generateCallbackUID(action);
-		window[callbackName] = (data) => {
-			delete window[callbackName];
-			const wrapperCallbackName = '_on' + action[0].toUpperCase() +
-				action.slice(1);
-			if (typeof(this[wrapperCallbackName]) == 'function'){
-				this[wrapperCallbackName](data);
-			}
-			resolve(data);
-		};
-		return callbackName;
-	}
-	_generateCallbackUID(prefix){
-		return 'arkitCallback_' + prefix + '_' + new Date().getTime() +
-			'_' + Math.floor((Math.random() * Number.MAX_SAFE_INTEGER))
-	}
-	_generateGlobalCallback(callbackName, num){
-		const name = 'arkitCallback' + num;
-		this._globalCallbacksMap[callbackName] = name;
-		const self = this;
-		window[name] = function(deviceData){
-			self['_' + callbackName](deviceData);
-		};
 	}
 	_onComputerVisionData(detail) {
 		if (!detail) {
@@ -4046,9 +3560,9 @@ class ARKitWrapper extends EventTarget {
 			return;
 		}
 		detail.camera.arCamera = true;
-		var orientation = detail.camera.interfaceOrientation;
+		const orientation = detail.camera.interfaceOrientation;
 		detail.camera.viewMatrix = detail.camera.inverse_viewMatrix;
-        switch (orientation) {
+		switch (orientation) {
 			case 1:
 				detail.camera.cameraOrientation = -90;
 				break;
@@ -4070,7 +3584,7 @@ class ARKitWrapper extends EventTarget {
 				detail.frame.pixelFormat = detail.frame.pixelFormatType;
 				break;
 		}
-		var xrVideoFrame = new XRVideoFrame(detail.frame.buffers, detail.frame.pixelFormat, this._adjustARKitTime(detail.frame.timestamp), detail.camera );
+		const xrVideoFrame = new XRVideoFrame(detail.frame.buffers, detail.frame.pixelFormat, this._adjustARKitTime(detail.frame.timestamp), detail.camera);
 		try {
 			this.dispatchEvent(
 				ARKitWrapper.COMPUTER_VISION_DATA,
@@ -4086,14 +3600,431 @@ class ARKitWrapper extends EventTarget {
 			console.error('COMPUTER_VISION_DATA event error', e);
 		}
 	}
-    _requestComputerVisionData() {
-        window.webkit.messageHandlers.requestComputerVisionData.postMessage({});
+	_do_rAF() {
+		if (this._rAF_callback) {
+			const _callback = this._rAF_callback;
+			const _params = this._rAF_callbackParams;
+			this._rAF_callback = null;
+			this._rAF_callbackParams = [];
+			return window.requestAnimationFrame((...params) => {
+					this.startingRender();
+					try {
+						_callback(..._params);
+					} catch(e) {
+						console.error('application callback error: ', e);
+					}
+					this.finishedRender();
+			});
+		}
 	}
-    _startSendingComputerVisionData() {
-        window.webkit.messageHandlers.startSendingComputerVisionData.postMessage({});
+	_createOrUpdateAnchorObject(element) {
+		if (element.plane_center) {
+			const anchor = this._anchors.get(element.uuid);
+			if (!anchor || anchor.placeholder) {
+				const planeObject = new XRPlaneMesh(element.transform,
+					element.plane_center,
+					[element.plane_extent.x, element.plane_extent.z],
+					element.plane_alignment,
+					element.geometry,
+					element.uuid, this._timestamp);
+				if (anchor) {
+					try {
+						anchor.dispatchEvent("replaceAnchor",
+							new CustomEvent("replaceAnchor", {
+								source: anchor,
+								detail: planeObject
+							})
+						);
+					} catch(e) {
+						console.error('replaceAnchor event error', e);
+					}
+					console.log('replaced dummy anchor created from hit test with plane');
+					this._anchors.delete(element.uuid);
+				}
+				this._anchors.set(element.uuid, planeObject);
+				element.object = planeObject;
+			} else if (anchor) {
+				anchor.updatePlaneData(element.transform, element.plane_center, [element.plane_extent.x,element.plane_extent.y], element.plane_alignment, element.geometry, this._timestamp);
+				element.object = anchor;
+			}
+		} else {
+			const anchor = this._anchors.get(element.uuid);
+			if (!anchor || anchor.placeholder) {
+				let anchorObject;
+				switch (element.type) {
+					case ARKitWrapper.ANCHOR_TYPE_FACE:
+						anchorObject = new XRFaceMesh(element.transform, element.geometry, element.blendShapes,  element.uuid, this._timestamp);
+						break;
+					case ARKitWrapper.ANCHOR_TYPE_ANCHOR:
+						anchorObject = new XRAnchor(element.transform, element.uuid, this._timestamp);
+						break;
+					case ARKitWrapper.ANCHOR_TYPE_IMAGE:
+						anchorObject = new XRImageAnchor(element.transform, element.uuid, this._timestamp);
+						break;
+				}
+				if (anchor) {
+					try {
+						anchor.dispatchEvent("replaceAnchor",
+							new CustomEvent("replaceAnchor", {
+								source: anchor || mesh,
+								detail: anchorObject
+							})
+						);
+					} catch(e) {
+						console.error('replaceAnchor event error', e);
+					}
+					console.log('replaced dummy anchor created from hit test with new anchor');
+				}
+				this._anchors.set(element.uuid, anchorObject);
+				element.object = anchorObject;
+			} else {
+				switch (element.type) {
+					case ARKitWrapper.ANCHOR_TYPE_FACE:
+						anchor.updateFaceData(element.transform, element.geometry, element.blendShapes, this._timestamp);
+						break;
+					default:
+						anchor.updateModelMatrix(element.transform, this._timestamp);
+						break;
+				}
+				element.object = anchor;
+			}
+		}
 	}
-    _stopSendingComputerVisionData() {
-        window.webkit.messageHandlers.stopSendingComputerVisionData.postMessage({});
+	_adjustARKitTime(time) {
+		if (this._timeOffsetComputed) {
+			return time + this._timeOffset;
+		} else {
+			return (performance || Date).now();
+		}
+	}
+	get hasData() { return this._rawARData !== null; }
+	getData(key=null) {
+		if (!key) {
+			return this._rawARData;
+		}
+		if (this._rawARData && typeof this._rawARData[key] !== 'undefined') {
+			return this._rawARData[key];
+		}
+		return null;
+	}
+	waitForInit() {
+		return new Promise((resolve, reject) => {
+			if (this._isInitialized) {
+				resolve();
+				return;
+			}
+			const callback = () => {
+				this.removeEventListener(ARKitWrapper.INIT_EVENT, callback, false);
+				resolve();
+			};
+			this.addEventListener(ARKitWrapper.INIT_EVENT, callback, false);
+		});
+	}
+	pickBestHit(hits) {
+		if (hits.length === 0) { return null; }
+		const planeResults = hits.filter(
+			hitTestResult => hitTestResult.type != ARKitWrapper.HIT_TEST_TYPE_FEATURE_POINT
+		);
+		const planeExistingUsingExtentResults = planeResults.filter(
+			hitTestResult => hitTestResult.type == ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_EXTENT
+		);
+		const planeExistingResults = planeResults.filter(
+			hitTestResult => hitTestResult.type == ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE
+		);
+		if (planeExistingUsingExtentResults.length) {
+			planeExistingUsingExtentResults = planeExistingUsingExtentResults.sort((a, b) => a.distance - b.distance);
+			return planeExistingUsingExtentResults[0];
+		} else if (planeExistingResults.length) {
+			planeExistingResults = planeExistingResults.sort((a, b) => a.distance - b.distance);
+			return planeExistingResults[0];
+		} else if (planeResults.length) {
+			planeResults = planeResults.sort((a, b) => a.distance - b.distance);
+			return planeResults[0];
+		} else {
+			return hits[0];
+		}
+		return null;
+	}
+	createAnchorFromHit(hit) {
+		return new Promise((resolve, reject) => {
+			if (hit.anchor_transform) {
+				let anchor = this._anchors.get(hit.uuid);
+				if (!anchor) {
+					anchor = new XRAnchor(hit.anchor_transform, hit.uuid, this._timestamp);
+					console.log('created dummy anchor from hit test');
+					anchor.placeholder = true;
+					this._anchors.set(hit.uuid, anchor);
+				}
+				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform);
+				resolve(anchorOffset);
+			} else {
+				let anchor = this._anchors.get(hit.uuid);
+				if (!anchor) {
+					anchor = new XRAnchor(hit.world_transform, hit.uuid);
+					console.log('created dummy anchor (not a plane) from hit test');
+					anchor.placeholder = true;
+					this._anchors.set(hit.uuid, anchor);
+				} else {
+					anchor.placeholder = false;
+					anchor.deleted = false;
+					console.log('hit test resulted in a hit on an existing anchor, without an offset');
+				}
+				resolve(anchor);
+			}
+		});
+	}
+	requestAnimationFrame(callback, ...params) {
+		this._rAF_callback = callback;
+		this._rAF_callbackParams = params;
+	}
+	startingRender() {
+		if (this._dataBeforeNext > 1) {
+		}
+	}
+	finishedRender() {
+		this._dataBeforeNext = 0;
+		this._anchors.forEach(anchor => {
+			anchor.clearChanged();
+		});
+		this._onUpdate();
+	}
+	watch(options=null) {
+		return new Promise((resolve, reject) => {
+			if (!this._isInitialized) {
+				reject("ARKitWrapper hasn't been initialized yet");
+				return;
+			}
+			if (this._waitingForSessionStart) {
+				reject("ARKitWrapper startSession called, waiting to finish");
+				return;
+			}
+			if (this._isWatching) {
+				resolve({
+					"cameraAccess": this._sessionCameraAccess,
+					"worldAccess": this._sessionWorldAccess,
+					"webXRAccess": true
+				});
+				return;
+			}
+			this._waitingForSessionStart = true;
+			let newOptions = Object.assign({}, this._defaultOptions);
+			if (options !== null) {
+				newOptions = Object.assign(newOptions, options);
+			}
+			this._requestedPermissions.cameraAccess = newOptions.videoFrames;
+			this._requestedPermissions.worldAccess = newOptions.worldSensing;
+			if (newOptions.videoFrames) {
+				delete newOptions.videoFrames;
+				newOptions.computer_vision_data = true;
+			}
+			console.log('----WATCH');
+			const callbackName = 'arkitCallbackOnData';
+			if (window[callbackName] === undefined) {
+				window[callbackName] = (result) => {
+					this._onData(result);
+				};
+			}
+			this._requestSession(newOptions, callbackName).then((results) => {
+				if (!results.webXRAccess) {
+					reject(new Error('user did not give permission to start a webxr session'));
+					return;
+				}
+				this._waitingForSessionStart = false;
+				this._isWatching = true;
+				this._currentPermissions.cameraAccess = results.cameraAccess;
+				this._currentPermissions.worldAccess = results.worldAccess;
+				resolve(results);
+			});
+		});
+	}
+	stop() {
+		return new Promise((resolve, reject) => {
+			if (!this._isWatching) {
+				resolve();
+				return;
+			}
+			console.log('----STOP');
+			this._stop().then((result) => {
+				this._isWatching = false;
+				resolve(results);
+			});
+		});
+	}
+	hitTest(x, y, types=ARKitWrapper.HIT_TEST_TYPE_ALL) {
+		return this._hitTest(x, y, types);
+	}
+	createAnchor(anchorInWorldMatrix) {
+		return new Promise((resolve, reject) => {
+			const tempAnchor = new XRAnchor(anchorInWorldMatrix, null, this._timestamp);
+			this._addAnchor(tempAnchor.uid, anchorInWorldMatrix).then(detail => {
+				if (detail.error) {
+					reject(detail.error);
+					return;
+				}
+				const anchor = this._anchors.get(detail.uuid);
+				if (!anchor) {
+					this._anchors.set(detail.uuid, tempAnchor);
+					resolve(tempAnchor);
+				} else {
+					anchor.placeholder = false;
+					anchor.deleted = false;
+					anchor.updateModelMatrix(detail.transform, this._timestamp);
+					resolve(anchor);
+				}
+			}).catch((...params) => {
+				console.error('could not create anchor', ...params);
+				reject();
+			});
+		});
+	}
+	removeAnchor(anchor) {
+		let _anchor = this._anchors.get(anchor.uid);
+		if (_anchor.placeholder) {
+			this._anchors.delete(anchor.uid);
+			return;
+		}
+		if (_anchor) {
+			_anchor.deleted = true;
+		}
+		if (!anchor instanceof XRAnchorOffset) {
+			this._removeAnchors([anchor.uid]);
+		}
+	}
+	createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		return new Promise((resolve, reject) => {
+			this._createDetectionImage(uid, buffer, width, height, physicalWidthInMeters).then(detail => {
+				if (detail.error) {
+					reject(detail.error);
+					return;
+				}
+				if (!detail.created) {
+					reject(null);
+					return;
+				}
+				resolve();
+			}).catch((...params) => {
+				console.error('could not create image', ...params);
+				reject();
+			});
+		});
+	}
+	destroyDetectionImage(uid) {
+		return new Promise((resolve, reject) => {
+			this._destroyDetectionImage(uid).then(detail => {
+				if (detail.error) {
+					reject(detail.error);
+					return;
+				}
+				resolve();
+			}).catch((...params) => {
+				console.error('could not destroy image', ...params);
+				reject();
+			});
+		});
+	}
+	activateDetectionImage(uid, trackable = false) {
+		return new Promise((resolve, reject) => {
+			const anchor = this._anchors.get(uid);
+			if (anchor && !anchor.deleted) {
+				resolve(anchor);
+				return;
+			}
+			this._activateDetectionImage(uid, trackable).then(detail => {
+				if (detail.error) {
+					reject(detail.error);
+					reject();
+				}
+				if (!detail.activated) {
+					reject(null);
+					return;
+				}
+				this._createOrUpdateAnchorObject(detail.imageAnchor);
+				detail.imageAnchor.object.deleted = false;
+				resolve(detail.imageAnchor.object);
+			}).catch((...params) => {
+				console.error('could not activate image', ...params);
+				reject();
+			});
+		});
+	}
+	deactivateDetectionImage(uid) {
+		return new Promise((resolve, reject) => {
+			this._deactivateDetectionImage(uid).then(detail => {
+				if (detail.error) {
+					reject(detail.error);
+					
+				}
+				const anchor = this._anchors.get(uid);
+				if (anchor) {
+					console.warn("anchor for image target '" + uid + "' still exists after deactivation");
+					this.removeAnchor(anchor);
+				}
+				resolve();
+			}).catch((...params) => {
+				console.error('could not activate image', ...params);
+				reject();
+			});
+		});
+	}
+	setNumberOfTrackedImages(count) {
+		return this._setNumberOfTrackedImages(count);
+	}
+	getWorldMap() {
+		return new Promise((resolve, reject) => {
+			this._getWorldMap().then(ARKitWorldMap => {
+				if (ARKitWorldMap.saved === true) {
+					resolve(ARKitWorldMap.worldMap);
+				} else if (ARKitWorldMap.error !== null) {
+					reject(ARKitWorldMap.error);
+					return;
+				} else {
+					reject(null);
+					return;
+				}
+			}).catch((...params) => {
+				console.error('could not get world map', ...params);
+				reject();
+			});
+		});
+	}
+	setWorldMap(worldMap) {
+		return this._setWorldMap(worldMap);
+	}
+	getLightProbe() {
+		return new Promise((resolve, reject) => {
+			if (this._lightProbe) {
+				resolve(this._lightProbe);
+			} else {
+				reject(new Error('Not populated yet'));
+			}
+		});
+	}
+	setUIOptions(options) {
+		return this._setUIOptions(options);
+	}
+	updateWorldSensingState(options) {
+		if (options.hasOwnProperty("meshDetectionState") && this._currentPermissions.worldAccess) {
+			this._worldSensingState.meshDetectionState = options.meshDetectionState.enabled || false;
+		} else {
+			this._worldSensingState.meshDetectionState = false;
+		}
+		return this._worldSensingState;
+	}
+	getWorldInformation() {
+		if (this._worldInformation) {
+			return this._worldInformation;
+		}
+		let state = {};
+		if (this._worldSensingState.meshDetectionState) {
+			state.meshes = [];
+			this._anchors.forEach(anchor => {
+				if (anchor.isMesh() && !anchor.deleted && !anchor.placeholder) {
+					state.meshes.push(anchor);
+				}
+			});
+		}
+		this._worldInformation = state;
+		return state;
 	}
 }
 ARKitWrapper.INIT_EVENT = 'arkit-init';
@@ -4141,13 +4072,13 @@ ARKitWrapper.ANCHOR_TYPE_ANCHOR = 'anchor';
 ARKitWrapper.ANCHOR_TYPE_IMAGE = 'image';
 
 class ARKitWatcher {
-	constructor(arKitWrapper){
+	constructor(arKitWrapper) {
 		this._subscribed = false;
 		this._arKitWrapper = arKitWrapper;
 		this.subscribe();
 	}
 	subscribe(){
-		if(this._subscribed) return
+		if (this._subscribed) { return; }
 		this._subscribed = true;
 		this._arKitWrapper.addEventListener(ARKitWrapper.INIT_EVENT, this.handleARKitInit.bind(this));
 		this._arKitWrapper.addEventListener(ARKitWrapper.WATCH_EVENT, this.handleARKitUpdate.bind(this));
@@ -4156,12 +4087,12 @@ class ARKitWatcher {
 		this._arKitWrapper.addEventListener(ARKitWrapper.AR_TRACKING_CHANGED, this.handleArTrackingChanged.bind(this));
 		this._arKitWrapper.addEventListener(ARKitWrapper.COMPUTER_VISION_DATA, this.handleComputerVisionData.bind(this));
 	}
-	handleARKitInit(){}
-	handleARKitUpdate(){}
-	handleARKitWindowResize(){}
-	handleOnError(){}
-	handleArTrackingChanged(){}
-	handleComputerVisionData(){}
+	handleARKitInit() {}
+	handleARKitUpdate() {}
+	handleARKitWindowResize() {}
+	handleOnError() {}
+	handleArTrackingChanged() {}
+	handleComputerVisionData() {}
 }
 
 class ARKitDevice extends XRDevice {
@@ -4178,7 +4109,7 @@ class ARKitDevice extends XRDevice {
 		if (document.body) {
 			insertWrapperDiv();
 		} else {
-			document.addEventListener('DOMContentLoaded', ev => insertWrapperDiv);
+			document.addEventListener('DOMContentLoaded', insertWrapperDiv);
 		}
 		this._headModelMatrix = create$14();
 		this._projectionMatrix = create$14();
@@ -4189,54 +4120,77 @@ class ARKitDevice extends XRDevice {
 		this._frameOfRefRequestsWaiting = [];
 		this._depthNear = 0.1;
 		this._depthFar = 1000;
-		try{
+		try {
 			this._arKitWrapper = ARKitWrapper.GetOrCreate();
 			this._arWatcher = new ARWatcher(this._arKitWrapper, this);
-		} catch (e){
+		} catch (e) {
 			console.error('Error initializing the ARKit wrapper', e);
 			this._arKitWrapper = null;
 			this._arWatcher = null;
 		}
 	}
 	static initStyles() {
-		window.addEventListener('DOMContentLoaded', () => {
-		  setTimeout(() => {
-			try {
-			  var styleEl = document.createElement('style');
-			  document.head.appendChild(styleEl);
-			  var styleSheet = styleEl.sheet;
-			  styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
-			  styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
-			  styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
-			} catch(e) {
-			  console.error('page error', e);
+		const init = () => {
+			const styleEl = document.createElement('style');
+			document.head.appendChild(styleEl);
+			const styleSheet = styleEl.sheet;
+			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
+		};
+		if (document.body) {
+			init();
+		} else {
+			window.addEventListener('DOMContentLoaded', init);
+		}
+	}
+	logPose() {
+		console.log('pose',
+			getTranslation$3(new Float32Array(3), this._headModelMatrix),
+			getRotation$2(new Float32Array(4), this._headModelMatrix)
+		);
+	}
+	setProjectionMatrix(matrix) {
+		copy$14(this._projectionMatrix, matrix);
+	}
+	setBaseViewMatrix(matrix) {
+		copy$14(this._headModelMatrix, matrix);
+		if (!this._baseFrameSet) {
+			this._baseFrameSet = true;
+			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
+				const callback = this._frameOfRefRequestsWaiting[i];
+				try {
+					callback();
+				} catch(e) {
+					console.error("finalization of reference frame requests failed: ", e);
+				}
 			}
-		  }, 1);
-		});
-	  }
-	get depthNear(){ return this._depthNear }
-	set depthNear(val){ this._depthNear = val; }
-	get depthFar(){ return this._depthFar }
-	set depthFar(val){ this._depthFar = val; }
-	isSessionSupported(mode){
+			this._frameOfRefRequestsWaiting.length = 0;
+		}
+	}
+	get depthNear() { return this._depthNear; }
+	set depthNear(val) { this._depthNear = val; }
+	get depthFar() { return this._depthFar; }
+	set depthFar(val) { this._depthFar = val; }
+	isSessionSupported(mode) {
 		return mode === 'immersive-ar';
 	}
-	async requestSession(mode, xrSessionInit={}){
-		if(!this.isSessionSupported(mode)){
+	async requestSession(mode, xrSessionInit={}) {
+		if (!this.isSessionSupported(mode)) {
 			console.error('Invalid session mode', mode);
-			return Promise.reject()
+			return Promise.reject();
 		}
-		if(!this._arKitWrapper){
+		if (!this._arKitWrapper) {
 			console.error('Session requested without an ARKitWrapper');
-			return Promise.reject()
+			return Promise.reject();
 		}
-		if(this._activeSession !== null){
+		if (this._activeSession !== null) {
 			console.error('Tried to start a second active session');
-			return Promise.reject()
+			return Promise.reject();
 		}
 		const requiredFeatures = xrSessionInit.requiredFeatures || [];
 		const optionalFeatures = xrSessionInit.optionalFeatures || [];
-		var ARKitOptions = {};
+		const ARKitOptions = {};
 		if (requiredFeatures.indexOf("worldSensing") >= 0 ||
 			optionalFeatures.indexOf("worldSensing") >= 0) {
 			ARKitOptions.worldSensing = true;
@@ -4249,154 +4203,129 @@ class ARKitDevice extends XRDevice {
 			optionalFeatures.indexOf("alignEUS") >= 0) {
 			ARKitOptions.alignEUS = true;
 		}
-		let initResult = await this._arKitWrapper.waitForInit().then(() => {
-		}).catch((...params) => {
+		await this._arKitWrapper.waitForInit().then(() => {}).catch((...params) => {
 			console.error("app failed to initialize: ", ...params);
-			return Promise.reject()
+			return Promise.reject();
 		});
-		let watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
+		const watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
 			const session = new Session();
 			this._sessions.set(session.id, session);
 			this._activeSession = session;
-			return Promise.resolve(session.id)
+			return Promise.resolve(session.id);
 		}).catch((...params) => {
 			console.error("session request failed: ", ...params);
-			return Promise.reject()
+			return Promise.reject();
 		});
-		return watchResult
+		return watchResult;
 	}
-	onBaseLayerSet(sessionId, layer){
+	onBaseLayerSet(sessionId, layer) {
 		this._sessions.get(sessionId).baseLayer = layer;
 		this._wrapperDiv.appendChild(layer.context.canvas);
 		layer.context.canvas.style.width = "100%";
 		layer.context.canvas.style.height = "100%";
 	}
-	requestAnimationFrame(callback, ...params){
-	    this._arKitWrapper.requestAnimationFrame(callback, params);
-		}
-	cancelAnimationFrame(handle){
-		return window.cancelAnimationFrame(handle)
+	requestAnimationFrame(callback, ...params) {
+		this._arKitWrapper.requestAnimationFrame(callback, params);
 	}
-	onFrameStart(sessionId){
+	cancelAnimationFrame(handle) {
+		return window.cancelAnimationFrame(handle);
 	}
-	onFrameEnd(sessionId){
+	onFrameStart(sessionId) {
 	}
-	logPose(){
-		console.log('pose',
-			getTranslation$3(new Float32Array(3), this._headModelMatrix),
-			getRotation$2(new Float32Array(4), this._headModelMatrix)
-		);
+	onFrameEnd(sessionId) {
 	}
-	requestFrameOfReferenceTransform(type, options){
-		var that = this;
+	requestFrameOfReferenceTransform(type, options) {
 		return new Promise((resolve, reject) => {
-			let enqueueOrExec = function (callback) {
-				if (that._baseFrameSet) {
+			const enqueueOrExec = (callback) => {
+				if (this._baseFrameSet) {
 					callback();
 				} else {
-					that._frameOfRefRequestsWaiting.push(callback);
+					this._frameOfRefRequestsWaiting.push(callback);
 				}
 			};
-			switch(type){
+			switch (type) {
 				case 'viewer':
-					enqueueOrExec(function () {
-						resolve(that._headModelMatrix);
+					enqueueOrExec(() => {
+						resolve(this._headModelMatrix);
 					});
-					return
+					return;
 				case 'local':
-					enqueueOrExec(function () {
-						resolve(that._eyeLevelMatrix);
+					enqueueOrExec(() => {
+						resolve(this._eyeLevelMatrix);
 					});
-					return
+					return;
 				case 'local-floor':
 				case 'bounded-floor':
 				case 'unbounded':
-					reject(new Error('not supported', type));
-					return
+					reject(new Error('not supported ' + type));
+					return;
 				default:
-					reject(new Error('Unsupported frame of reference type', type));
+					reject(new Error('Unsupported frame of reference type ' + type));
+					return;
 			}
-		})
+		});
 	}
-	endSession(sessionId){
+	endSession(sessionId) {
 		const session = this._sessions.get(sessionId);
-		if(!session || session.ended) return
+		if (!session || session.ended) { return; }
 		session.ended = true;
-		if(this._activeSession === session){
+		if (this._activeSession === session) {
 			this._activeSession = null;
 			this._arKitWrapper.stop();
 		}
-		if(session.baseLayer !== null){
+		if (session.baseLayer !== null) {
 			this._wrapperDiv.removeChild(session.baseLayer.context.canvas);
 		}
 	}
-	getViewport(sessionId, eye, layer, target){
+	getViewport(sessionId, eye, layer, target) {
 		const { offsetWidth, offsetHeight } = layer.context.canvas;
 		target.x = 0;
 		target.y = 0;
 		target.width = offsetWidth;
 		target.height = offsetHeight;
-		return true
+		return true;
 	}
-	getProjectionMatrix(eye){
-		return this._projectionMatrix
+	getProjectionMatrix(eye) {
+		return this._projectionMatrix;
 	}
-	setProjectionMatrix(matrix){
-		copy$14(this._projectionMatrix, matrix);
+	getBasePoseMatrix() {
+		return this._headModelMatrix;
 	}
-	getBasePoseMatrix(){
-		return this._headModelMatrix
+	getBaseViewMatrix(eye) {
+		return this._headModelMatrix;
 	}
-	getBaseViewMatrix(eye){
-		return this._headModelMatrix
+	requestStageBounds() {
+		return null;
 	}
-	setBaseViewMatrix(matrix){
-		copy$14(this._headModelMatrix, matrix);
-		if (!this._baseFrameSet) {
-			this._baseFrameSet = true;
-			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
-				const callback = this._frameOfRefRequestsWaiting[i];
-				try {
-					callback();
-				} catch(e) {
-					console.error("finalization of reference frame requests failed: ", e);
-				}
-			}
-			this._frameOfRefRequestsWaiting = [];
-		}
+	getInputSources() {
+		return [];
 	}
-	requestStageBounds(){
-		return null
+	getInputPose(inputSource, coordinateSystem) {
+		return null;
 	}
-	getInputSources(){
-		return []
-	}
-	getInputPose(inputSource, coordinateSystem){
-		return null
-	}
-	onWindowResize(){
+	onWindowResize() {
 		this._sessions.forEach((value, key) => {
 		});
 	}
 }
 let SESSION_ID = 100;
 class Session {
-	constructor(){
+	constructor() {
 		this.ended = null;
 		this.baseLayer = null;
 		this.id = ++SESSION_ID;
 	}
 }
 class ARWatcher extends ARKitWatcher {
-	constructor(arKitWrapper, arKitDevice){
+	constructor(arKitWrapper, arKitDevice) {
 		super(arKitWrapper);
 		this._arKitDevice = arKitDevice;
 	}
-	handleARKitUpdate(event){
+	handleARKitUpdate(event) {
 		this._arKitDevice.setBaseViewMatrix(this._arKitWrapper._cameraTransform);
 		this._arKitDevice.setProjectionMatrix(this._arKitWrapper._projectionMatrix);
 	}
-	handleOnError(...args){
+	handleOnError(...args) {
 		console.error('ARKit error', ...args);
 	}
 }
@@ -4411,103 +4340,126 @@ WebXRPolyfill.prototype._patchNavigatorXR = function() {
 		configurable: true,
 	});
 };
-let mobileIndex =  navigator.userAgent.indexOf("Mobile/");
-let isWebXRViewer = navigator.userAgent.indexOf("WebXRViewer") !== -1 ||
-			((navigator.userAgent.indexOf("iPhone") !== -1 ||  navigator.userAgent.indexOf("iPad") !== -1)
+const mobileIndex =  navigator.userAgent.indexOf("Mobile/");
+const isWebXRViewer = navigator.userAgent.indexOf("WebXRViewer") !== -1 ||
+			((navigator.userAgent.indexOf("iPhone") !== -1 || navigator.userAgent.indexOf("iPad") !== -1)
 				&& mobileIndex !== -1 && navigator.userAgent.indexOf("AppleWebKit") !== -1
 				&& navigator.userAgent.indexOf(" ", mobileIndex) === -1);
 const xrPolyfill =  !isWebXRViewer ? null : new WebXRPolyfill(null, {
 	webvr: false,
 	cardboard: false
 });
-function _updateWorldSensingState (options) {
-	return _arKitWrapper.updateWorldSensingState(options)
-}
-function _getWorldInformation () {
-	 return  _arKitWrapper.getWorldInformation()
-}
-async function _xrSessionRequestHitTest(direction, referenceSpace, frame) {
-	return new Promise((resolve, reject) => {
-		const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
-		_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
-			if(hits.length === 0) resolve([]);
-			this.requestReferenceSpace('local').then(localReferenceSpace => {
-				copy$14(_workingMatrix, frame.getPose(referenceSpace, localReferenceSpace).transform.matrix);
-				resolve(hits.map(hit => {
-					multiply$14(_workingMatrix2, _workingMatrix, hit.world_transform);
-					return new XRHitResult(_workingMatrix2, hit, _arKitWrapper._timestamp)
-				}));
-			}).catch((...params) => {
-				console.error('Error testing for hits', ...params);
-				reject();
-			});
-		}).catch((...params) => {
-			console.error('Error testing for hits', ...params);
-			reject();
-		});
-	})
-}
-async function _addAnchor(value, referenceSpace, frame) {
-	  if (value instanceof XRHitResult) {
-			return _arKitWrapper.createAnchorFromHit(value._hit)
+const _convertRayToARKitScreenCoordinates = (ray, projectionMatrix) => {
+	const proj = transformMat4$5(create$15(), ray, projectionMatrix);
+	const x = (proj[0] + 1) / 2;
+	const y = (-proj[1] + 1) / 2;
+	return [x, y];
+};
+let _arKitWrapper = null;
+const installAnchorsExtension = () => {
+	if (window.XRSession === undefined) { return; }
+	XRSession.prototype.addAnchor = async function addAnchor(value, referenceSpace, frame) {
+		if (value instanceof XRHitResult) {
+			return _arKitWrapper.createAnchorFromHit(value._hit);
 		} else if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				this.requestReferenceSpace('local').then(localReferenceSpace => {
 					copy$14(_workingMatrix, frame.getPose(localReferenceSpace, referenceSpace).transform.matrix);
 					const anchorInWorldMatrix = multiply$14(create$14(), _workingMatrix, value);
-					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(resolve)
-					.catch((...params) => {
-						console.error('could not create anchor', ...params);
-						reject();
-					});
+					_arKitWrapper.createAnchor(anchorInWorldMatrix)
+						.then(resolve)
+						.catch((...params) => {
+							console.error('could not create anchor', ...params);
+							reject();
+						});
+				}).catch((...params) => {
+					console.error('could not create local reference space', ...params);
+					reject();
 				});
-			}).catch((...params) => {
-				console.error('could not create eye-level frame of reference', ...params);
-				reject();
 			});
 		} else {
-			return Promise.reject('invalid value passed to addAnchor', value)
+			return Promise.reject('invalid value passed to addAnchor ' + value);
 		}
-}
-async function                       _removeAnchor(anchor) {
-	return new Promise((resolve, reject) => {
-		_arKitWrapper.removeAnchor(anchor);
-		resolve();
-	})
-}
-function _setNumberOfTrackedImages (count) {
-	return _arKitWrapper.setNumberOfTrackedImages(count)
-}
-function _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
-	return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters)
-}
-function _destroyDetectionImage(uid) {
-	return _arKitWrapper.createDetectionImage(uid)
-}
-function _activateDetectionImage(uid) {
-	return  _arKitWrapper.activateDetectionImage(uid)
-}
-function _deactivateDetectionImage(uid) {
-	return  _arKitWrapper.deactivateDetectionImage(uid)
-}
-function _getWorldMap() {
-	return _arKitWrapper.getWorldMap()
-}
-function _setWorldMap(worldMap) {
-	return _arKitWrapper.setWorldMap(worldMap)
-}
-function _getWorldMappingStatus() {
-	return _arKitWrapper._worldMappingStatus;
-}
-function _convertRayToARKitScreenCoordinates(ray, projectionMatrix){
-	var proj = transformMat4$5(create$15(), ray, projectionMatrix);
-	let x = (proj[0] + 1)/2;
-	let y = (-proj[1] + 1)/2;
-	return [x, y]
-}
-var _arKitWrapper = null;
-function _installExtensions(){
-	if(!navigator.xr) return
+	};
+	XRSession.prototype.removeAnchor = async function removeAnchor(anchor) {
+		return new Promise((resolve, reject) => {
+			_arKitWrapper.removeAnchor(anchor);
+			resolve();
+		});
+	};
+};
+const installHitTestingExtension = () => {
+	if (window.XRSession === undefined) { return }
+	XRSession.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
+		return new Promise((resolve, reject) => {
+			const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
+			_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
+				if (hits.length === 0) { resolve([]); }
+				this.requestReferenceSpace('local').then(localReferenceSpace => {
+					copy$14(_workingMatrix, frame.getPose(referenceSpace, localReferenceSpace).transform.matrix);
+					resolve(hits.map(hit => {
+						multiply$14(_workingMatrix2, _workingMatrix, hit.world_transform);
+						return new XRHitResult(_workingMatrix2, hit, _arKitWrapper._timestamp);
+					}));
+				}).catch((...params) => {
+					console.error('could not create local reference space', ...params);
+					reject();
+				});
+			}).catch((...params) => {
+				console.error('Error testing for hits', ...params);
+				reject();
+			});
+		});
+	};
+};
+const installRealWorldGeometryExtension = () => {
+	if (window.XRFrame === undefined || window.XRSession === undefined) { return; }
+	Object.defineProperty(XRFrame.prototype, 'worldInformation', {
+		get: function getWorldInformation() {
+			return  _arKitWrapper.getWorldInformation();
+		}
+	});
+	XRSession.prototype.updateWorldSensingState = function UpdateWorldSensingState(options) {
+		return _arKitWrapper.updateWorldSensingState(options);
+	};
+};
+const installLightingEstimationExtension = () => {
+	if (window.XRFrame === undefined) { return; }
+	XRFrame.prototype.getGlobalLightEstimate = function () {
+		return _arKitWrapper.getLightProbe();
+	};
+	XRFrame.prototype.getGlobalReflectionProbe = function () {
+		throw new Error('Not implemented');
+	};
+};
+const installNonstandardExtension = () => {
+	if (window.XRSession === undefined) { return; }
+	XRSession.prototype.nonStandard_setNumberOfTrackedImages = function setNumberOfTrackedImages(count) {
+		return _arKitWrapper.setNumberOfTrackedImages(count);
+	};
+	XRSession.prototype.nonStandard_createDetectionImage = function createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters);
+	};
+	XRSession.prototype.nonStandard_destroyDetectionImage = function destroyDetectionImage(uid) {
+		return _arKitWrapper.createDetectionImage(uid);
+	};
+	XRSession.prototype.nonStandard_activateDetectionImage = function activateDetectionImage(uid) {
+		return  _arKitWrapper.activateDetectionImage(uid);
+	};
+	XRSession.prototype.nonStandard_deactivateDetectionImage = function deactivateDetectionImage(uid) {
+		return  _arKitWrapper.deactivateDetectionImage(uid);
+	};
+	XRSession.prototype.nonStandard_getWorldMap = function getWorldMap() {
+		return _arKitWrapper.getWorldMap();
+	};
+	XRSession.prototype.nonStandard_setWorldMap = function setWorldMap(worldMap) {
+		return _arKitWrapper.setWorldMap(worldMap);
+	};
+	XRSession.prototype.nonStandard_getWorldMappingStatus = function getWorldMappingStatus() {
+		return _arKitWrapper._worldMappingStatus;
+	};
+};
+if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 	_arKitWrapper = ARKitWrapper.GetOrCreate();
 	ARKitDevice.initStyles();
 	if(window.XR) {
@@ -4522,22 +4474,7 @@ function _installExtensions(){
 			return this._requestSession(mode, xrSessionInit);
 		};
 	}
-	if(window.XRSession){
-		XRSession.prototype.requestHitTest = _xrSessionRequestHitTest;
-		XRSession.prototype.updateWorldSensingState = _updateWorldSensingState;
-		XRSession.prototype.addAnchor = _addAnchor;
-		XRSession.prototype.removeAnchor = _removeAnchor;
-		XRSession.prototype.nonStandard_createDetectionImage = _createDetectionImage;
-		XRSession.prototype.nonStandard_destroyDetectionImage = _destroyDetectionImage;
-		XRSession.prototype.nonStandard_activateDetectionImage = _activateDetectionImage;
-		XRSession.prototype.nonStandard_deactivateDetectionImage = _deactivateDetectionImage;
-		XRSession.prototype.nonStandard_setNumberOfTrackedImages = _setNumberOfTrackedImages;
-		XRSession.prototype.nonStandard_getWorldMap = _getWorldMap;
-		XRSession.prototype.nonStandard_setWorldMap = _setWorldMap;
-		XRSession.prototype.nonStandard_getWorldMappingStatus = _getWorldMappingStatus;
-	}
 	if(window.XRFrame) {
-		Object.defineProperty(XRFrame.prototype, 'worldInformation', { get: _getWorldInformation });
 		XRFrame.prototype._getPose = window.XRFrame.prototype.getPose;
 		XRFrame.prototype.getPose = function (space, baseSpace) {
 			if (space._specialType === 'target-ray' || space._specialType === 'grip') {
@@ -4559,13 +4496,12 @@ function _installExtensions(){
 				false
 			);
 		};
-		XRFrame.prototype.getGlobalLightEstimate = function () {
-			return _arKitWrapper.getLightProbe();
-		};
-		XRFrame.prototype.getGlobalReflectionProbe = function () {
-			throw new Error('Not implemented');
-		};
 	}
+	installAnchorsExtension();
+	installHitTestingExtension();
+	installRealWorldGeometryExtension();
+	installLightingEstimationExtension();
+	installNonstandardExtension();
 	for (const className of Object.keys(API$1)) {
 		if (window[className] !== undefined) {
 			console.warn(`${className} already defined on global.`);
@@ -4573,9 +4509,6 @@ function _installExtensions(){
 			window[className] = API$1[className];
 		}
 	}
-}
-if (xrPolyfill && xrPolyfill.injected) {
-	_installExtensions();
 }
 
 })));
