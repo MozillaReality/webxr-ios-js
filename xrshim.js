@@ -1,4 +1,4 @@
-const REALAPI_URL = 'https://raw.githack.com/takahirox/webxr-ios-js/PolyfillUpdateWIP/dist/webxr.js';
+const REALAPI_URL = 'https://raw.githack.com/MozillaReality/webxr-ios-js/develop/dist/webxr.js';
 
 // @TODO: Delete FakeXR class definition when the polyfill is loaded (possible?)
 class FakeXR {
