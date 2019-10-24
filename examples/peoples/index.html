@@ -23,7 +23,7 @@
 		<script src="../libs/three-r86/postprocessing/BloomPass.js"></script>
 		<script src="../libs/three-r86/postprocessing/FilmPass.js"></script>
 
-		<script module src="../../dist/webxr.js"></script>
+		<script module src="../../xrshim.js"></script>
 	</head>
 	<body>
 		<div id="description">
@@ -38,31 +38,33 @@
 			*/
 
 			// some dependencies and utilities
-			import * as mat4 from '../libs/gl-matrix/mat4.js'
-			import * as vec3 from '../libs/gl-matrix/vec3.js'
+			import * as mat4 from '../libs/gl-matrix/mat4.js';
+			import * as vec3 from '../libs/gl-matrix/vec3.js';
 
-			import XREngine from "../XREngine.js"
-			import XRInputManager from "../XRInputManager.js"
+			import XREngine from '../XREngine.js';
+			import XRInputManager from '../XRInputManager.js';
 
-			let device = null
-			let session = null
-			let eyeLevelFrameOfReference = null
-			let engine = null
-			var canvas = null
+			let session = null;
+			let localReferenceSpace = null;
+			let viewerReferenceSpace = null;
+			let engine = null;
+			let canvas = null;
 
 			// temporary working variables
-			const workingMatrix = mat4.create()
-			const workingVec3 = vec3.create()
+			const workingMatrix = mat4.create();
+			const workingVec3 = vec3.create();
 
-			var clock = new THREE.Clock()
-			var meshes = []
-			var clonemeshes = []
-			var geometries = []
-			var femaleGeometry = null
-			var maleGeometry = null
-			var composer = null
+			const coordinatesQueue = [];
 
-			var colors = [
+			const clock = new THREE.Clock();
+			const meshes = [];
+			const clonemeshes = [];
+			const geometries = [];
+			let femaleGeometry = null;
+			let maleGeometry = null;
+			let composer = null;
+
+			const colors = [
 				0xff4422,
 				0xff9955,
 				0xff77dd,
@@ -70,209 +72,144 @@
 				0xff5522,
 				0xff9922,
 				0xff99ff
-			]
-
-			function initializeScene() {
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
-
-				// Add a box and axis at the origin of the eye-level coordinate system
-				// for debugging by uncommenting these lines
-				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
-
-				const loader = new THREE.BinaryLoader()
-				loader.load('./female02/Female02_bin.js', geometry => {
-					femaleGeometry = geometry
-					geometries.push(femaleGeometry)
-				})
-				loader.load('./male02/Male02_bin.js', geometry => {
-					maleGeometry = geometry
-					geometries.push(maleGeometry)
-				})
-
-				composer = new THREE.EffectComposer(engine.renderer)
-				composer.addPass(new THREE.RenderPass(engine.scene, engine.camera))
-				composer.addPass(new THREE.BloomPass(0.75))
-				let filmPass = new THREE.FilmPass(0.5, 0.5, 1448, false)
-				filmPass.renderToScreen = true
-				composer.addPass(filmPass)
-			}
-
-			////////////////////////////////
-			// custom render loop to use the compositor instead of the vanilla renderer
-			function handleAnimationFrame(t, frame){
-				if(!session || session.ended) return
-				session.requestAnimationFrame(handleAnimationFrame)
-
-				let pose = frame.getDevicePose(eyeLevelFrameOfReference)
-				if(!pose){
-					console.log('No pose')
-					return
-				}
-
-				updateScene(frame)
-
-				engine.startFrame()
-				for (let view of frame.views) {
-					engine.camera.matrix.fromArray(pose.getViewMatrix(view))
-					engine.camera.updateMatrixWorld()
-					engine.camera.projectionMatrix.fromArray(view.projectionMatrix)
-
-					engine.renderer.setSize(canvas.offsetWidth, canvas.offsetHeight, false)
-					let viewport = session.baseLayer.getViewport(view)
-					engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
-
-					composer.render(0.01)
-				}
-				engine.endFrame()
-			}
-
-			////////////////////////////////////
-			// hit testing
-			function handleHitResults(hits) {
-				let size = 0.05;
-				if (hits.length > 0) {
-					let hit = hits[0]
-
-					session.requestFrameOfReference('head-model').then(headFrameOfReference => {
-						session.addAnchor(hit, headFrameOfReference).then(anchor => {					
-							engine.addAnchoredNode(anchor, createSceneGraphNode())
-						}).catch(err => {
-							console.error('Error adding anchor', err)
-						})
-					})
-				}
-			}
+			];
 
 			//////////////////////////////
 			// create and update the "peoples"
-			function createSceneGraphNode(){
-				const group = new THREE.Group()
+			const createSceneGraphNode = () => {
+				const group = new THREE.Group();
 				group.add(createMesh(
-					geometries[Math.floor(geometries.length * Math.random())], 
+					geometries[Math.floor(geometries.length * Math.random())],
 					0.006,
 					0,0,0, 
 					0.005, 
 					colors[Math.floor(colors.length * Math.random())],
 					true
-				))
-				return group
-			}
+				));
+				return group;
+			};
 
-			function updateScene(frame){
-				let delta = 10 * clock.getDelta()
-				delta = delta < 2 ? delta : 2
+			const updateScene = frame => {
+				let delta = 10 * clock.getDelta();
+				delta = delta < 2 ? delta : 2;
 
-				let data = null
-				let vertices = null
-				let vertices_tmp = null
-				let vl = null
-				let d = null
-				let vt = null
-				let mesh = null
-				let p = null
-				for(let j = 0, jl = meshes.length; j < jl; j ++){
-					data = meshes[j]
-					mesh = data.mesh
-					vertices = data.vertices
-					vertices_tmp = data.vertices_tmp
-					vl = data.vl
-					if (! data.dynamic) continue
-					if (data.start > 0){
-						data.start -= 1
+				let data = null;
+				let vertices = null;
+				let vertices_tmp = null;
+				let vl = null;
+				let d = null;
+				let vt = null;
+				let mesh = null;
+				let p = null;
+				for (let j = 0, jl = meshes.length; j < jl; j ++) {
+					data = meshes[j];
+					mesh = data.mesh;
+					vertices = data.vertices;
+					vertices_tmp = data.vertices_tmp;
+					vl = data.vl;
+
+					if (!data.dynamic) continue;
+
+					if (data.start > 0) {
+						data.start -= 1;
 					} else {
-						if (!data.started){
-							data.direction = -1
-							data.started = true
+						if (!data.started) {
+							data.direction = -1;
+							data.started = true;
 						}
 					}
-					for (let i = 0; i < vl; i ++){
-						p = vertices[i]
-						vt = vertices_tmp[i]
-						// falling down
-						if (data.direction < 0){
-							if (p.y > 0){
-								p.x += 1.5 * (0.50 - Math.random()) * data.speed * delta
-								p.y += 3.0 * (0.25 - Math.random()) * data.speed * delta
-								p.z += 1.5 * (0.50 - Math.random()) * data.speed * delta
-							} else {
-								if (! vt[3]){
-									vt[3] = 1
-									data.down += 1
-								}
-							}
-						}
-						// rising up
-						if (data.direction > 0){
-							d = Math.abs(p.x - vt[0]) + Math.abs(p.y - vt[1]) + Math.abs(p.z - vt[2])
-							if (d > 1){
-								p.x += - (p.x - vt[0]) / d * data.speed * delta * (0.85 - Math.random())
-								p.y += - (p.y - vt[1]) / d * data.speed * delta * (1 + Math.random())
-								p.z += - (p.z - vt[2]) / d * data.speed * delta * (0.85 - Math.random())
-							} else {
-								if (! vt[4]){
-									vt[4] = 1
-									data.up += 1
-								}
-							}
-						}
-					}
-					// all down
-					if (data.down === vl){
-						if (data.delay === 0){
-							data.direction = 1
-							data.speed = 10
-							data.down = 0
-							data.delay = 320
-							for(let i = 0; i < vl; i ++){
-								vertices_tmp[i][3] = 0
-							}
-						} else {
-							data.delay -= 1
-						}
-					}
-					// all up
-					if (data.up === vl){
-						if (data.delay === 0){
-							data.direction = -1
-							data.speed = 35
-							data.up = 0
-							data.delay = 120
-							for(let i = 0; i < vl; i ++){
-								vertices_tmp[i][4] = 0
-							}
-						} else {
-							data.delay -= 1
-						}
-					}
-					mesh.geometry.verticesNeedUpdate = true
-				}
-			}
 
-			function createMesh(originalGeometry, scale, x, y, z, pointSize, color, dynamic){
-				let i, c, mesh, p
-				let vertices = originalGeometry.vertices
-				let vl = vertices.length
-				let geometry = new THREE.Geometry()
-				let vertices_tmp = []
-				for (i = 0; i < vl; i ++){
-					p = vertices[i]
-					geometry.vertices[i] = p.clone()
-					vertices_tmp[i] = [p.x, p.y, p.z, 0, 0]
+					for (let i = 0; i < vl; i ++) {
+						p = vertices[i];
+						vt = vertices_tmp[i];
+
+						// falling down
+						if (data.direction < 0) {
+							if (p.y > 0) {
+								p.x += 1.5 * (0.50 - Math.random()) * data.speed * delta;
+								p.y += 3.0 * (0.25 - Math.random()) * data.speed * delta;
+								p.z += 1.5 * (0.50 - Math.random()) * data.speed * delta;
+							} else {
+								if (!vt[3]) {
+									vt[3] = 1;
+									data.down += 1;
+								}
+							}
+						}
+
+						// rising up
+						if (data.direction > 0) {
+							d = Math.abs(p.x - vt[0]) + Math.abs(p.y - vt[1]) + Math.abs(p.z - vt[2]);
+							if (d > 1) {
+								p.x += - (p.x - vt[0]) / d * data.speed * delta * (0.85 - Math.random());
+								p.y += - (p.y - vt[1]) / d * data.speed * delta * (1 + Math.random());
+								p.z += - (p.z - vt[2]) / d * data.speed * delta * (0.85 - Math.random());
+							} else {
+								if (!vt[4]) {
+									vt[4] = 1;
+									data.up += 1;
+								}
+							}
+						}
+					}
+
+					// all down
+					if (data.down === vl) {
+						if (data.delay === 0) {
+							data.direction = 1;
+							data.speed = 10;
+							data.down = 0;
+							data.delay = 320;
+							for (let i = 0; i < vl; i ++) {
+								vertices_tmp[i][3] = 0;
+							}
+						} else {
+							data.delay -= 1;
+						}
+					}
+
+					// all up
+					if (data.up === vl) {
+						if (data.delay === 0) {
+							data.direction = -1;
+							data.speed = 35;
+							data.up = 0;
+							data.delay = 120;
+							for (let i = 0; i < vl; i ++) {
+								vertices_tmp[i][4] = 0;
+							}
+						} else {
+							data.delay -= 1;
+						}
+					}
+
+					mesh.geometry.verticesNeedUpdate = true;
 				}
-				if (dynamic){
-					c = color
-					mesh = new THREE.Points(geometry, new THREE.PointsMaterial({ size: pointSize, color: c }))
-					clonemeshes.push({ mesh: mesh, speed: 0.5 + Math.random() })
+			};
+
+			const createMesh = (originalGeometry, scale, x, y, z, pointSize, color, dynamic) => {
+				let i, c, mesh, p;
+				let vertices = originalGeometry.vertices;
+				let vl = vertices.length;
+				let geometry = new THREE.Geometry();
+				let vertices_tmp = [];
+				for (i = 0; i < vl; i ++) {
+					p = vertices[i];
+					geometry.vertices[i] = p.clone();
+					vertices_tmp[i] = [p.x, p.y, p.z, 0, 0];
+				}
+				if (dynamic) {
+					c = color;
+					mesh = new THREE.Points(geometry, new THREE.PointsMaterial({size: pointSize, color: c}));
+					clonemeshes.push({mesh: mesh, speed: 0.5 + Math.random()});
 				} else {
-					mesh = new THREE.Points(geometry, new THREE.PointsMaterial({ size: pointSize, color: color }))
+					mesh = new THREE.Points(geometry, new THREE.PointsMaterial({size: pointSize, color: color}));
 				}
-				mesh.scale.x = mesh.scale.y = mesh.scale.z = scale
-				mesh.position.x = x
-				mesh.position.y = y
-				mesh.position.z = z
-				mesh.quaternion.setFromEuler(new THREE.Euler(0, (Math.PI * 2) * Math.random(), 0))
+				mesh.scale.x = mesh.scale.y = mesh.scale.z = scale;
+				mesh.position.x = x;
+				mesh.position.y = y;
+				mesh.position.z = z;
+				mesh.quaternion.setFromEuler(new THREE.Euler(0, (Math.PI * 2) * Math.random(), 0));
 				meshes.push({
 					mesh: mesh,
 					vertices: geometry.vertices,
@@ -286,143 +223,181 @@
 					started: false,
 					start: Math.floor(100 * Math.random()),
 					dynamic: dynamic
-				})
-				mesh.name = 'prettyperson: ' + Math.random() 
-				return mesh
-			}
+				});
+				mesh.name = 'prettyperson: ' + Math.random();
+				return mesh;
+			};
 		
-			////////////////////////////////////////////////////
-			// BOILER PLATE.  Can you feel the plates boiling?
-			//
-			// Create the output context where the XRSession will place composited renders
-			const xrCanvas = document.createElement('canvas')
-			xrCanvas.setAttribute('class', 'xr-canvas')
-			const xrContext = xrCanvas.getContext('xrpresent')
-			if(!xrContext){
-				console.error('No XR context', xrCanvas)
-			}
+			document.getElementById('description').addEventListener('touchstart', event => {
+				event.target.style.display = 'none' ;
+				event.stopPropagation();
+			}, {capture: true});
 
-			navigator.xr.requestDevice().then(xrDevice => {
-				device = xrDevice
-			}).catch(err => {
-				console.error('Error', err)
-			})
+			document.getElementById('go-button').addEventListener('click', event => {
+				if (!session) {
+					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+						if (supported) {
+							navigator.xr.requestSession('immersive-ar')
+								.then(handleSessionStarted)
+								.catch(err => {
+									console.error('Session setup error', err);
+								});
+							document.getElementById('go-button').innerText = 'End';
+							document.getElementById('go-button').style.display = 'none';
+						} else {
+							throw new Error('No immersive-ar support');
+						}
+					});
+				} else {
+					session.end();
+					session = null;
+					document.getElementById('description').style.display = 'block';
+					document.getElementById('go-button').style.display = 'block';
+					document.getElementById('go-button').innerText = 'Go';
+				}
+			}, true);
 
-			document.getElementById('description').addEventListener('touchstart', hideMe, {capture: true})
-			function hideMe(event) { 
-				event.target.style.display = 'none' 
+			document.getElementById('go-button').addEventListener('touchstart', event => {
 				event.stopPropagation()
-			}
-
-			document.getElementById('go-button').addEventListener('click', handleStartSessionRequest, true)
-			document.getElementById('go-button').addEventListener('touchstart', handleGoButtonTouch, true)
-			function handleGoButtonTouch(event) { 
-				event.stopPropagation()
-			}
+			}, true);
 
 			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager(handleXRInput)
-			function handleXRInput(eventName, details){
+			const inputManager = new XRInputManager((eventName, details) => {
 				switch(eventName){
 					case 'normalized-touch':
-						hitTestWithScreenCoordinates(...details.normalizedCoordinates)
-							.then(handleHitResults)
-							.catch(err => {
-								console.error('Error testing hits', err)
-							})
+						coordinatesQueue.push([details.normalizedCoordinates[0], details.normalizedCoordinates[1]]);
 						break
 					default:
 						console.error('unknown xr input event', eventName, details)
 						break
 				}
-			}
+			});
 
-			function hitTestWithScreenCoordinates(normalizedX, normalizedY){
-				if(session === null){
-					console.log('No session for hit testing')
-					return Promise.reject()
-				}
+			const hitTestWithScreenCoordinates = (normalizedX, normalizedY, frame) => {
 				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = 
-					XRInputManager.convertScreenCoordinatesToRay(normalizedX, normalizedY, 
-																 engine.camera.projectionMatrix)
-
-				return session.requestFrameOfReference('head-model').then(headFrameOfReference => {
-					return session.requestHitTest(origin, direction, headFrameOfReference)
-				})
-			}
+				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(
+					normalizedX, normalizedY, engine.camera.projectionMatrix);
+				return session.requestHitTest(direction, viewerReferenceSpace, frame);
+			};
 
 
-			function handleStartSessionRequest(ev){
-				if(device === null){
-					console.error('No xr device')
-					return
+			////////////////////////////////////
+			// hit testing
+			const handleHitResults = (hits, frame) => {
+				const size = 0.05;
+				if (hits.length > 0) {
+					const hit = hits[0];
+					session.addAnchor(hit, viewerReferenceSpace, frame).then(anchor => {					
+						engine.addAnchoredNode(anchor, createSceneGraphNode());
+					}).catch(err => {
+						console.error('Error adding anchor', err);
+					});
 				}
+			};
 
-				if (!session) {
-					device.requestSession({ outputContext: xrContext })
-						.then(handleSessionStarted)
-						.catch(err => {
-							console.error('Session setup error', err)
-						})
-					document.getElementById('go-button').innerText = "End"
-					document.getElementById('go-button').style.display = "none"
-				} else {
-					session.end()
-					handleSessionEnded();
-					document.getElementById('description').style.display = 'block' 
-					document.getElementById('go-button').style.display = "block"
-					document.getElementById('go-button').innerText = "Go"
-				}
-			}
-
-			function handleSessionEnded() {	
-				session = null
-			}
-
-			function handleSessionStarted(xrSession){
+			const handleSessionStarted = async xrSession => {
 				session = xrSession
-				document.body.insertBefore(xrCanvas, document.body.firstChild)
 
 				// Create the context where we will render our 3D scene
 				canvas = document.createElement('canvas')
-				var glContext = canvas.getContext('webgl', {
-					compatibleXRDevice: device
-				})
-				if(!glContext) throw new Error('Could not create a webgl context')
+				const context = canvas.getContext('webgl', {
+					xrCompatible: true
+				});
+
+				if (!context) throw new Error('Could not create a webgl context');
 
 				// Set up the base layer
-				session.baseLayer = new XRWebGLLayer(session, glContext)
+				session.updateRenderState({baseLayer: new XRWebGLLayer(session, context)});
+
+				localReferenceSpace = await session.requestReferenceSpace('local');
+				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
 
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
-				engine = new XREngine(canvas, glContext)
+				engine = new XREngine(canvas, context)
 
-				createRootNode().then(() => {
+				session.requestAnimationFrame(async (t, frame) => {
+					// get the location of the device, and use it to create an 
+					// anchor with the identity orientation
+					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
+					mat4.getTranslation(workingVec3, workingMatrix);
+					mat4.fromTranslation(workingMatrix, workingVec3);
+
+					const anchor = await session.addAnchor(workingMatrix, localReferenceSpace, frame);
+					engine.addAnchoredNode(anchor, engine.root);
+
+
 					// Kick off rendering
-					session.requestAnimationFrame(handleAnimationFrame)
-				})
+					session.requestAnimationFrame(handleAnimationFrame);
+				});
 
-				initializeScene()
-			}
+				// initialize scene
 
-			async function createRootNode() {
-				let headFrameOfReference = await session.requestFrameOfReference('head-model')
-				eyeLevelFrameOfReference = await session.requestFrameOfReference('eye-level')
+				engine.addAmbientLight();
+				engine.addDirectionalLight();
 
-				// get the location of the device, and use it to create an 
-				// anchor with the identity orientation
-				headFrameOfReference.getTransformTo(eyeLevelFrameOfReference, workingMatrix)
-				mat4.getTranslation(workingVec3, workingMatrix)
-				mat4.fromTranslation(workingMatrix, workingVec3)
+				// Add a box and axis at the origin of the eye-level coordinate system
+				// for debugging by uncommenting these lines
+				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
+				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
 
-				let anchor = await session.addAnchor(workingMatrix, eyeLevelFrameOfReference)
-				engine.addAnchoredNode(anchor, engine.root)
-				
-				return true
-			}
+				const loader = new THREE.BinaryLoader();
+				loader.load('./female02/Female02_bin.js', geometry => {
+					femaleGeometry = geometry;
+					geometries.push(femaleGeometry);
+				});
+				loader.load('./male02/Male02_bin.js', geometry => {
+					maleGeometry = geometry;
+					geometries.push(maleGeometry);
+				});
 
+				composer = new THREE.EffectComposer(engine.renderer);
+				composer.addPass(new THREE.RenderPass(engine.scene, engine.camera));
+				composer.addPass(new THREE.BloomPass(0.75));
+				const filmPass = new THREE.FilmPass(0.5, 0.5, 1448, false);
+				filmPass.renderToScreen = true;
+				composer.addPass(filmPass);
+			};
 
+			////////////////////////////////
+			// custom render loop to use the compositor instead of the vanilla renderer
+			const handleAnimationFrame = (t, frame) => {
+				if (!session || session.ended) return;
+
+				session.requestAnimationFrame(handleAnimationFrame);
+
+				for (const coordinates of coordinatesQueue) {
+					hitTestWithScreenCoordinates(coordinates[0], coordinates[1], frame)
+						.then(hits => handleHitResults(hits, frame))
+						.catch(err => {
+							console.error('Error testing hits', err);
+						});
+				}
+
+				coordinatesQueue.length = 0;
+
+				const pose = frame.getViewerPose(localReferenceSpace);
+				if (!pose){
+					console.log('No pose');
+					return;
+				}
+
+				updateScene(frame);
+
+				engine.startFrame();
+				for (const view of pose.views) {
+					engine.camera.matrix.fromArray(view.transform.inverse.matrix);
+					engine.camera.updateMatrixWorld();
+					engine.camera.projectionMatrix.fromArray(view.projectionMatrix);
+
+					engine.renderer.setSize(canvas.offsetWidth, canvas.offsetHeight, false)
+					const viewport = session.renderState.baseLayer.getViewport(view);
+					engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+
+					composer.render(0.01);
+				}
+				engine.endFrame();
+			};
 		</script>
 	</body>
 </html>
