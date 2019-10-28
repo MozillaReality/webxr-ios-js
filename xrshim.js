@@ -160,7 +160,7 @@
 			get ondevicechange() { return null; }
 			set ondevicechange(value) {
 				// @TODO: Relax this limitation?
-				throw new Error('Shim we don\'t expect user sets devicechange event before starting session.');
+				throw new Error('Shim: We don\'t expect user sets devicechange event before starting session.');
 			}
 		};
 	};
