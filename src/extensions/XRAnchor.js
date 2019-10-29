@@ -89,6 +89,9 @@ export default class XRAnchor extends EventTarget {
 	static _generateUID(){
 		return 'anchor-' + new Date().getTime() + '-' + Math.floor((Math.random() * Number.MAX_SAFE_INTEGER))
 	}
+
+	// Note: detach() is defined in webxr.js.
+	// detach() {}
 }
 
 // need to implement events

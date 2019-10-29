@@ -16,6 +16,7 @@ import API from './extensions/index';
 import ARKitDevice from './arkit/ARKitDevice';
 import ARKitWrapper from './arkit/ARKitWrapper';
 
+import XRAnchor from './extensions/XRAnchor';
 import XRHitResult from './extensions/XRHitResult';
 
 const _workingMatrix = mat4.create();
@@ -70,31 +71,22 @@ let _arKitWrapper = null;
 // Specification: https://github.com/immersive-web/anchors
 
 const installAnchorsExtension = () => {
-	if (window.XRSession === undefined) { return; }
+	if (window.XRFrame === undefined) { return; }
 
 	/**
-	 * Note: In the latest(09/24/2019) anchor spec
-	 *       https://github.com/immersive-web/anchors/blob/master/explainer.md
-	 *       XRSession.addAnchor() takes two arguments - pose and referenceSpace.
-	 *       It might be out of date because in the newest WebXR spec
-	 *       we use XRFrame.getPose() to get the pose of space relative to baseSpace.
-	 *       Then adding the third argument frame {XRFrame} here as temporal workaround.
-	 *       We should update to follow the spec if the anchor spec is updated.
-	 *
 	 * @param value {XRHitResult|Float32Array}
 	 * @param referenceSpace {XRReferenceSpace}
-	 * @param frame {XRFrame}
 	 * @return {Promise<XRAnchor>}
 	 */
-	XRSession.prototype.addAnchor = async function addAnchor(value, referenceSpace, frame) {
+	XRFrame.prototype.addAnchor = async function addAnchor(value, referenceSpace) {
 		if (value instanceof XRHitResult) {
 			return _arKitWrapper.createAnchorFromHit(value._hit);
 		} else if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				// need to get the data in eye-level reference frame (local reference space)
 				// in this polyfill. 
-				this.requestReferenceSpace('local').then(localReferenceSpace => {
-					mat4.copy(_workingMatrix, frame.getPose(localReferenceSpace, referenceSpace).transform.matrix);
+				this.session.requestReferenceSpace('local').then(localReferenceSpace => {
+					mat4.copy(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
 					const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value);
 					_arKitWrapper.createAnchor(anchorInWorldMatrix)
 						.then(resolve)
@@ -113,20 +105,21 @@ const installAnchorsExtension = () => {
 	};
 
 	/**
-	 * Note: In the explainer XRAnchor has detach() method for anchor removal
-	 *       but it doesn't seems to be fixed yet.
-	 *       We have XRSession.removeAnchor() for now.
-	 *       We should update to follow the spec if it's fixed.
+	 * Note: Defining detach() method here, not in XRAnchor.js, so far because
+	 *       I'm not sure if XRAnchor.js should have a dependency with _arKitWrapper.
 	 *
-	 * @param anchor {XRAnchor}
+	 * Note: Currently (10/29/2019) the explainer doesn't describe the return type
+	 *       from detach(). So returning Promise<void> so far.
 	 * @return {Promise<void>}
 	 */
-	XRSession.prototype.removeAnchor = async function removeAnchor(anchor) {
+	XRAnchor.prototype.detach = async function removeAnchor() {
 		return new Promise((resolve, reject) => {
-			_arKitWrapper.removeAnchor(anchor);
+			_arKitWrapper.removeAnchor(this);
 			resolve();
 		});
 	};
+
+	// @TODO: Support update event
 };
 
 // Hit-Testing
