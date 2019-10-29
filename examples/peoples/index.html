@@ -287,7 +287,7 @@
 				const size = 0.05;
 				if (hits.length > 0) {
 					const hit = hits[0];
-					session.addAnchor(hit, viewerReferenceSpace, frame).then(anchor => {					
+					frame.addAnchor(hit, viewerReferenceSpace).then(anchor => {
 						engine.addAnchoredNode(anchor, createSceneGraphNode());
 					}).catch(err => {
 						console.error('Error adding anchor', err);
@@ -323,7 +323,7 @@
 					mat4.getTranslation(workingVec3, workingMatrix);
 					mat4.fromTranslation(workingMatrix, workingVec3);
 
-					const anchor = await session.addAnchor(workingMatrix, localReferenceSpace, frame);
+					const anchor = await frame.addAnchor(workingMatrix, localReferenceSpace);
 					engine.addAnchoredNode(anchor, engine.root);
 
 

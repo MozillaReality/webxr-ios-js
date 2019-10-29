@@ -106,7 +106,7 @@
 					imageActivateDetection = true;
 					//engine.removeAnchoredNode(ducky)
 					if (imageAnchor) {
-						session.removeAnchor(imageAnchor);
+						imageAnchor.detach();
 						engine.removeAnchoredNode(ducky);
 						imageAnchor = null;
 					}
@@ -217,7 +217,7 @@
 			mat4.getTranslation(workingVec3, workingMatrix);
 			mat4.fromTranslation(workingMatrix, workingVec3);
 
-			const anchor = await session.addAnchor(workingMatrix, localReferenceSpace, frame);
+			const anchor = await frame.addAnchor(workingMatrix, localReferenceSpace);
 			engine.addAnchoredNode(anchor, engine.root);
 
 			// Kick off rendering
