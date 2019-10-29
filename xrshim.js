@@ -79,13 +79,6 @@
 						}
 					};
 					break;
-				case 'XRReferenceSpace':
-					window[name] = class extends XRSpace {
-						constructor() {
-							throw new Error('Shim: We don\'t expect user instanciates XR classes');
-						}
-					};
-					break;
 				case 'XRBoundedReferenceSpace':
 					window[name] = class extends XRReferenceSpace {
 						constructor() {
