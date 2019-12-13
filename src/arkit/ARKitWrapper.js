@@ -456,7 +456,8 @@ export default class ARKitWrapper extends EventTarget {
 	}
 
 	_onUpdate() {
-		return this._sendMessage('onUpdate', {}, true, false);
+		return window.webkit.messageHandlers.onUpdate.postMessage({});
+//		return this._sendMessage('onUpdate', {}, true, false);
 	}
 
 	/*
@@ -944,6 +945,9 @@ export default class ARKitWrapper extends EventTarget {
 		this._rAF_callback = callback;
 		this._rAF_callbackParams = params;
 
+		if (this._dataBeforeNext > 0) {
+				this._do_rAF();	
+		}
 		// if there's data waiting, skip it because we're behind 
 	}
 
