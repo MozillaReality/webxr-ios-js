@@ -58,7 +58,7 @@
 				case 'XRWebGLLayer':
 					window[name] = class {
 						constructor() {
-							// Note: XRRigidTransform can be instanciated by user
+							// Note: XRRigidTransform should be able to be instanciated by user
 							//       even before starting session but prohibiting as Shim limitation so far.
 							throw new Error('Shim: We don\'t expect user instanciates XR classes');
 						}
@@ -67,13 +67,6 @@
 				case 'XRSession':
 				case 'XRSpace':
 					window[name] = class extends EventTarget {
-						constructor() {
-							throw new Error('Shim: We don\'t expect user instanciates XR classes');
-						}
-					};
-					break;
-				case 'XRReferenceSpace':
-					window[name] = class extends XRSpace {
 						constructor() {
 							throw new Error('Shim: We don\'t expect user instanciates XR classes');
 						}
