@@ -118,7 +118,7 @@
 					mat4.getTranslation(workingVec3, workingMatrix1);
 					mat4.fromTranslation(workingMatrix1, workingVec3);
 
-					const anchor = await session.addAnchor(workingMatrix1, localReferenceSpace, frame);
+					const anchor = await frame.addAnchor(workingMatrix1, localReferenceSpace);
 					engine.addAnchoredNode(anchor, engine.root);
 
 					// Kick off rendering
@@ -147,7 +147,7 @@
 				mat4.multiply(workingMatrix1, workingMatrix2, workingMatrix1);
 
 				// create an anchor in front of the phone
-				session.addAnchor(workingMatrix1, viewerReferenceSpace, frame).then(anchor => {					
+				frame.addAnchor(workingMatrix1, viewerReferenceSpace).then(anchor => {
 					engine.addAnchoredNode(anchor, createSceneGraphNode());					
 				}).catch(err => {
 					console.error('Error adding anchor', err);
