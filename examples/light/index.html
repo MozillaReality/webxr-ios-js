@@ -51,11 +51,11 @@
 			const reticleNotTrackedColor = new THREE.Color(0xFF6666);
 			const reticleMaterial = new THREE.MeshStandardMaterial({color: reticleTrackedColor});
 			let requestNextHit = true;
+			let reticleHits = null;
 
 			let ambientLight = null;
 			let directionalLight = null;
 
-			let reticleHits = null;
 
 			// handle hit testing slightly differently than other samples, since we're doing
 			// it per frame.  The "boiler plate" code below is slightly different, setting 
@@ -222,7 +222,7 @@
 					handleHitResults(reticleHits, frame);
 					reticleHits = null;
 				}
-				
+
 				frame.getGlobalLightEstimate().then(lightProbe => {
 					const ambientIntensity = lightProbe.indirectIrradiance; // @TODO: Fix me
 					ambientLight.intensity = ambientIntensity;
