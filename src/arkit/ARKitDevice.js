@@ -121,7 +121,59 @@ export default class ARKitDevice extends XRDevice {
 		return mode === 'immersive-ar';
 	}
 
-	async requestSession(mode, xrSessionInit={}) {
+	/**
+	 * @param {string} featureDescriptor
+	 * @return {boolean}
+	 */
+	isFeatureSupported(featureDescriptor) {
+		switch(featureDescriptor) {
+		case 'viewer': return true;
+		case 'local': return true;
+
+		// @TODO: need to support local-floor, bounded and unbounded
+		case 'local-floor': return true;
+		case 'bounded': return false;
+		case 'unbounded': return false;
+		
+		case 'worldSensing': return true;
+		case 'computerVision': return true;
+		case 'alignEUS': return true;
+
+		default: return false;
+		}
+	}
+
+    /**
+	 * @param {number} sessionId
+	 * @param {XRReferenceSpaceType} type
+	 * @return {boolean}
+	 */
+	doesSessionSupportReferenceSpace(sessionId, type) {
+		const session = this._sessions.get(sessionId);
+		if (session.ended) {
+			return false;
+		}
+
+		if (!session.enabledFeatures.has(type)) {
+			// if the feature isn't supported on this session, return false
+			return false;
+		}
+
+		// now check it's a valid reference space
+		switch(type) {
+		case 'viewer': return true;
+		case 'local': return true;
+
+		// @TODO: need to support local-floor, bounded and unbounded
+		case 'local-floor': return true;
+		case 'bounded': return false;
+		case 'unbounded': return false;
+
+		default: return false;
+		}
+	}
+
+	async requestSession(mode, enabledFeatures) {
 		if (!this.isSessionSupported(mode)) {
 			console.error('Invalid session mode', mode);
 			return Promise.reject();
@@ -135,20 +187,14 @@ export default class ARKitDevice extends XRDevice {
 			return Promise.reject();
 		}
 
-		const requiredFeatures = xrSessionInit.requiredFeatures || [];
-		const optionalFeatures = xrSessionInit.optionalFeatures || [];
-
 		const ARKitOptions = {};
-		if (requiredFeatures.indexOf("worldSensing") >= 0 ||
-			optionalFeatures.indexOf("worldSensing") >= 0) {
+		if (enabledFeatures.has("worldSensing")) {
 			ARKitOptions.worldSensing = true;
 		}
-		if (requiredFeatures.indexOf("computerVision") >= 0 ||
-			optionalFeatures.indexOf("computerVision") >= 0) {
+		if (enabledFeatures.has("computerVision")) {
 			ARKitOptions.videoFrames = true;
 		}
-		if (requiredFeatures.indexOf("alignEUS") >= 0 ||
-			optionalFeatures.indexOf("alignEUS") >= 0) {
+		if (enabledFeatures.has("alignEUS")) {
 			ARKitOptions.alignEUS = true;
 		}
 
@@ -158,9 +204,10 @@ export default class ARKitDevice extends XRDevice {
 		});
 
 		const watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
-			const session = new Session();
+			const session = new Session(mode, enabledFeatures);
 			this._sessions.set(session.id, session);
 			this._activeSession = session;
+
 			return Promise.resolve(session.id);
 		}).catch((...params) => {
 			console.error("session request failed: ", ...params);
@@ -295,7 +342,9 @@ export default class ARKitDevice extends XRDevice {
 
 let SESSION_ID = 100;
 class Session {
-	constructor() {
+	constructor(mode, enabledFeatures) {
+		this.mode = mode;
+		this.enabledFeatures = enabledFeatures;
 		this.ended = null; // boolean
 		this.baseLayer = null; // XRWebGLLayer
 		this.id = ++SESSION_ID;

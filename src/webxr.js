@@ -83,21 +83,20 @@ const installAnchorsExtension = () => {
 			return _arKitWrapper.createAnchorFromHit(value._hit);
 		} else if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
-				// need to get the data in eye-level reference frame (local reference space)
-				// in this polyfill. 
-				this.session.requestReferenceSpace('local').then(localReferenceSpace => {
-					mat4.copy(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
-					const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value);
-					_arKitWrapper.createAnchor(anchorInWorldMatrix)
-						.then(resolve)
-						.catch((...params) => {
-							console.error('could not create anchor', ...params);
-							reject();
-						});
-				}).catch((...params) => {
-					console.error('could not create local reference space', ...params);
-					reject();
-				});
+				// we assume that the eye-level reference frame (local reference space)
+				// was obtained during requestSession below in this polyfill. 
+				// needs to be done so that this method doesn't actually need to 
+				// be async and wait
+
+				let localReferenceSpace = this.session._localSpace;
+				mat4.copy(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
+				const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value);
+				_arKitWrapper.createAnchor(anchorInWorldMatrix)
+					.then(resolve)
+					.catch((...params) => {
+						console.error('could not create anchor', ...params);
+						reject();
+					});
 			});
 		} else {
 			return Promise.reject('invalid value passed to addAnchor ' + value);
@@ -128,6 +127,23 @@ const installAnchorsExtension = () => {
 const installHitTestingExtension = () => {
 	if (window.XRSession === undefined) { return };
 
+	/**
+	* Need to override the requestAnimationFrame so we can finish up any hit test 
+	* calculations within the rAF.  Since getPose needs to be done in a rAF.
+	* 
+	* TODO: the whole hit Test needs to be redone. 
+	*/
+	XRSession.prototype._original_XRSession_rAF = XRSession.prototype.requestAnimationFrame;
+	let _hitList = [];
+	XRSession.prototype.requestAnimationFrame = function (callback) {
+		this._original_XRSession_rAF((rightNow, frame) => {
+			for (const hit of _hitList) {
+				hit(rightNow, frame);
+			}
+			_hitList.length = 0;
+			callback(rightNow,frame);
+		})
+	}
 	/**
 	* Note: Following the spec in https://github.com/immersive-web/anchors/blob/master/explainer.md
 	*       There seems being a newer spec https://github.com/immersive-web/hit-test/blob/master/hit-testing-explainer.md
@@ -166,19 +182,23 @@ const installHitTestingExtension = () => {
 				// Hit results are in the tracker (aka eye-level) coordinate system (local reference space),
 				// so transform them back to head-model (viewer) since the passed origin and results must be in the same coordinate system
 
-				// uncomment if you want one hit, and get rid of map below
-				// const hit = _arKitWrapper.pickBestHit(hits);
+				let localReferenceSpace = this._localSpace;
+				let ts = _arKitWrapper._timestamp;
 
-				this.requestReferenceSpace('local').then(localReferenceSpace => {
-					mat4.copy(_workingMatrix, frame.getPose(referenceSpace, localReferenceSpace).transform.matrix);
+				// can't evaluate this till the next rAF, because getPose is done
+				// only in a rAF
+				_hitList.push( (rightNow, frame) => {
+					mat4.copy(_workingMatrix, 
+							frame.getPose(referenceSpace,
+											localReferenceSpace).transform.matrix);
 					resolve(hits.map(hit => {
-						mat4.multiply(_workingMatrix2, _workingMatrix, hit.world_transform);
-						return new XRHitResult(_workingMatrix2, hit, _arKitWrapper._timestamp);
+						mat4.multiply(_workingMatrix2, 
+									_workingMatrix, 
+									hit.world_transform);
+						return new XRHitResult(_workingMatrix2, hit, ts);
 					}));
-				}).catch((...params) => {
-					console.error('could not create local reference space', ...params);
-					reject();
 				});
+
 			}).catch((...params) => {
 				console.error('Error testing for hits', ...params);
 				reject();
@@ -323,9 +343,14 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 			if (mode !== 'immersive-ar') return Promise.resolve(false);
 			return this._isSessionSupported(mode);
 		};
-		XR.prototype.requestSession = function (mode, xrSessionInit) {
-			if (mode !== 'immersive-ar') Promise.reject(new DOMException('Polyfill Error: only immersive-ar mode is supported.'));
-			return this._requestSession(mode, xrSessionInit);
+		XR.prototype.requestSession = async function (mode, xrSessionInit) {
+			if (mode !== 'immersive-ar') {
+				throw new DOMException('Polyfill Error: only immersive-ar mode is supported.'); 
+			}
+
+			let session = await this._requestSession(mode, xrSessionInit)
+			session._localSpace = await session.requestReferenceSpace('local')
+			return session
 		};
 	}
 

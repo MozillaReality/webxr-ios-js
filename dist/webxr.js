@@ -3864,7 +3864,37 @@ class ARKitDevice extends XRDevice {
 	isSessionSupported(mode) {
 		return mode === 'immersive-ar';
 	}
-	async requestSession(mode, xrSessionInit={}) {
+	isFeatureSupported(featureDescriptor) {
+		switch(featureDescriptor) {
+		case 'viewer': return true;
+		case 'local': return true;
+		case 'local-floor': return true;
+		case 'bounded': return false;
+		case 'unbounded': return false;
+		case 'worldSensing': return true;
+		case 'computerVision': return true;
+		case 'alignEUS': return true;
+		default: return false;
+		}
+	}
+	doesSessionSupportReferenceSpace(sessionId, type) {
+		const session = this._sessions.get(sessionId);
+		if (session.ended) {
+			return false;
+		}
+		if (!session.enabledFeatures.has(type)) {
+			return false;
+		}
+		switch(type) {
+		case 'viewer': return true;
+		case 'local': return true;
+		case 'local-floor': return true;
+		case 'bounded': return false;
+		case 'unbounded': return false;
+		default: return false;
+		}
+	}
+	async requestSession(mode, enabledFeatures) {
 		if (!this.isSessionSupported(mode)) {
 			console.error('Invalid session mode', mode);
 			return Promise.reject();
@@ -3877,19 +3907,14 @@ class ARKitDevice extends XRDevice {
 			console.error('Tried to start a second active session');
 			return Promise.reject();
 		}
-		const requiredFeatures = xrSessionInit.requiredFeatures || [];
-		const optionalFeatures = xrSessionInit.optionalFeatures || [];
 		const ARKitOptions = {};
-		if (requiredFeatures.indexOf("worldSensing") >= 0 ||
-			optionalFeatures.indexOf("worldSensing") >= 0) {
+		if (enabledFeatures.has("worldSensing")) {
 			ARKitOptions.worldSensing = true;
 		}
-		if (requiredFeatures.indexOf("computerVision") >= 0 ||
-			optionalFeatures.indexOf("computerVision") >= 0) {
+		if (enabledFeatures.has("computerVision")) {
 			ARKitOptions.videoFrames = true;
 		}
-		if (requiredFeatures.indexOf("alignEUS") >= 0 ||
-			optionalFeatures.indexOf("alignEUS") >= 0) {
+		if (enabledFeatures.has("alignEUS")) {
 			ARKitOptions.alignEUS = true;
 		}
 		await this._arKitWrapper.waitForInit().then(() => {}).catch((...params) => {
@@ -3897,7 +3922,7 @@ class ARKitDevice extends XRDevice {
 			return Promise.reject();
 		});
 		const watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
-			const session = new Session();
+			const session = new Session(mode, enabledFeatures);
 			this._sessions.set(session.id, session);
 			this._activeSession = session;
 			return Promise.resolve(session.id);
@@ -3999,7 +4024,9 @@ class ARKitDevice extends XRDevice {
 }
 let SESSION_ID = 100;
 class Session {
-	constructor() {
+	constructor(mode, enabledFeatures) {
+		this.mode = mode;
+		this.enabledFeatures = enabledFeatures;
 		this.ended = null;
 		this.baseLayer = null;
 		this.id = ++SESSION_ID;
@@ -4052,19 +4079,15 @@ const installAnchorsExtension = () => {
 			return _arKitWrapper.createAnchorFromHit(value._hit);
 		} else if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
-				this.session.requestReferenceSpace('local').then(localReferenceSpace => {
-					copy$5(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
-					const anchorInWorldMatrix = multiply$5(create$5(), _workingMatrix, value);
-					_arKitWrapper.createAnchor(anchorInWorldMatrix)
-						.then(resolve)
-						.catch((...params) => {
-							console.error('could not create anchor', ...params);
-							reject();
-						});
-				}).catch((...params) => {
-					console.error('could not create local reference space', ...params);
-					reject();
-				});
+				let localReferenceSpace = this.session._localSpace;
+				copy$5(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
+				const anchorInWorldMatrix = multiply$5(create$5(), _workingMatrix, value);
+				_arKitWrapper.createAnchor(anchorInWorldMatrix)
+					.then(resolve)
+					.catch((...params) => {
+						console.error('could not create anchor', ...params);
+						reject();
+					});
 			});
 		} else {
 			return Promise.reject('invalid value passed to addAnchor ' + value);
@@ -4079,20 +4102,34 @@ const installAnchorsExtension = () => {
 };
 const installHitTestingExtension = () => {
 	if (window.XRSession === undefined) { return }
+	XRSession.prototype._original_XRSession_rAF = XRSession.prototype.requestAnimationFrame;
+	let _hitList = [];
+	XRSession.prototype.requestAnimationFrame = function (callback) {
+		this._original_XRSession_rAF((rightNow, frame) => {
+			for (const hit of _hitList) {
+				hit(rightNow, frame);
+			}
+			_hitList.length = 0;
+			callback(rightNow,frame);
+		});
+	};
 	XRSession.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
 		return new Promise((resolve, reject) => {
 			const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
 			_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
 				if (hits.length === 0) { resolve([]); }
-				this.requestReferenceSpace('local').then(localReferenceSpace => {
-					copy$5(_workingMatrix, frame.getPose(referenceSpace, localReferenceSpace).transform.matrix);
+				let localReferenceSpace = this._localSpace;
+				let ts = _arKitWrapper._timestamp;
+				_hitList.push( (rightNow, frame) => {
+					copy$5(_workingMatrix,
+							frame.getPose(referenceSpace,
+											localReferenceSpace).transform.matrix);
 					resolve(hits.map(hit => {
-						multiply$5(_workingMatrix2, _workingMatrix, hit.world_transform);
-						return new XRHitResult(_workingMatrix2, hit, _arKitWrapper._timestamp);
+						multiply$5(_workingMatrix2,
+									_workingMatrix,
+									hit.world_transform);
+						return new XRHitResult(_workingMatrix2, hit, ts);
 					}));
-				}).catch((...params) => {
-					console.error('could not create local reference space', ...params);
-					reject();
 				});
 			}).catch((...params) => {
 				console.error('Error testing for hits', ...params);
@@ -4158,9 +4195,13 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 			if (mode !== 'immersive-ar') return Promise.resolve(false);
 			return this._isSessionSupported(mode);
 		};
-		XR.prototype.requestSession = function (mode, xrSessionInit) {
-			if (mode !== 'immersive-ar') Promise.reject(new DOMException('Polyfill Error: only immersive-ar mode is supported.'));
-			return this._requestSession(mode, xrSessionInit);
+		XR.prototype.requestSession = async function (mode, xrSessionInit) {
+			if (mode !== 'immersive-ar') {
+				throw new DOMException('Polyfill Error: only immersive-ar mode is supported.');
+			}
+			let session = await this._requestSession(mode, xrSessionInit);
+			session._localSpace = await session.requestReferenceSpace('local');
+			return session
 		};
 	}
 	if(window.XRFrame) {
