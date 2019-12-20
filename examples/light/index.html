@@ -55,6 +55,8 @@
 			let ambientLight = null;
 			let directionalLight = null;
 
+			let reticleHits = null;
+
 			// handle hit testing slightly differently than other samples, since we're doing
 			// it per frame.  The "boiler plate" code below is slightly different, setting 
 			// requestNextHit on tap instead of executing the hit test.  The custom XREngineHits
@@ -85,7 +87,7 @@
 						requestNextHit = false;
 
 						session.requestHitTest(savedDirection, viewerReferenceSpace, frame)
-							.then(hits => handleHitResults(hits, frame))
+							.then(hits => reticleHits = hits)
 							.catch(err => {
 								console.error('Error testing hits', err);
 							});
@@ -216,6 +218,11 @@
 
 				session.requestAnimationFrame(handleAnimationFrame);
 
+				if (reticleHits) {
+					handleHitResults(reticleHits, frame);
+					reticleHits = null;
+				}
+				
 				frame.getGlobalLightEstimate().then(lightProbe => {
 					const ambientIntensity = lightProbe.indirectIrradiance; // @TODO: Fix me
 					ambientLight.intensity = ambientIntensity;

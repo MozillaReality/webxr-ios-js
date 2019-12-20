@@ -4080,7 +4080,7 @@ const installAnchorsExtension = () => {
 		} else if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				let localReferenceSpace = this.session._localSpace;
-				copy$5(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
+				copy$5(_workingMatrix, this.getPose(referenceSpace, localReferenceSpace).transform.matrix);
 				const anchorInWorldMatrix = multiply$5(create$5(), _workingMatrix, value);
 				_arKitWrapper.createAnchor(anchorInWorldMatrix)
 					.then(resolve)

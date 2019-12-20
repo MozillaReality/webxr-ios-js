@@ -89,7 +89,7 @@ const installAnchorsExtension = () => {
 				// be async and wait
 
 				let localReferenceSpace = this.session._localSpace;
-				mat4.copy(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
+				mat4.copy(_workingMatrix, this.getPose(referenceSpace, localReferenceSpace).transform.matrix);
 				const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value);
 				_arKitWrapper.createAnchor(anchorInWorldMatrix)
 					.then(resolve)

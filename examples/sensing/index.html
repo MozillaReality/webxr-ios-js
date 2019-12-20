@@ -60,6 +60,7 @@
 		const reticleNotTrackedColor = new THREE.Color(0xFF6666);
 		const reticleMaterial = new THREE.MeshStandardMaterial({color: reticleTrackedColor});
 		let requestNextHit = true;
+		let reticleHits = null;
 
 		let ambientLight = null;
 		let directionalLight = null;
@@ -249,7 +250,7 @@
 					requestNextHit = false
 
 					session.requestHitTest(savedDirection, viewerReferenceSpace, frame)
-						.then(hits => handleHitResults(hits, frame))
+						.then(hits => reticleHits = hits)
 						.catch(err => {
 							console.error('Error testing hits', err)
 						});
@@ -388,6 +389,11 @@
 			if( !session || session.ended) return;
 
 			session.requestAnimationFrame(handleAnimationFrame)
+
+			if (reticleHits) {
+				handleHitResults(reticleHits, frame);
+				reticleHits = null;
+			}
 
 			updateScene(frame);
 
