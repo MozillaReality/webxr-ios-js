@@ -265,7 +265,8 @@ export default class ARKitWrapper extends EventTarget {
 				};
 				extraOptions.callback = callbackName;
 			}
-			window.webkit.messageHandlers[actionName].postMessage(Object.assign({}, options, extraOptions));
+			let handler = window.webkit.messageHandlers[actionName]
+			handler.postMessage(Object.assign({}, options, extraOptions));
 			if (!callback) { resolve(); }
 		});
 	}
@@ -431,7 +432,7 @@ export default class ARKitWrapper extends EventTarget {
 	}
 
 	_stop() {
-		return this._sendMessage('stop');
+		return this._sendMessage('stopAR');
 	}
 
 	/*
@@ -913,6 +914,10 @@ export default class ARKitWrapper extends EventTarget {
 					// mark this as possibly needing replacement
 					anchor.placeholder = true;
 					this._anchors.set(hit.uuid, anchor);
+				} else if (anchor.placeholder) {
+					// if it's a placeholder, and we aren't getting world geometry, then it will always
+					// be a placeholder, so we should update whenever we have new data
+					anchor.updateModelMatrix(hit.anchor_transform, this._timestamp);
 				}
 				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform);
 				resolve(anchorOffset);
@@ -1055,7 +1060,7 @@ export default class ARKitWrapper extends EventTarget {
 			}
 
 			console.log('----STOP');
-			this._stop().then((result) => {
+			this._stop().then((results) => {
 				this._isWatching = false;
 				resolve(results);
 			});

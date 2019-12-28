@@ -20,7 +20,8 @@ export default class ARKitDevice extends XRDevice {
 		this._throttledLogPose = throttle(this.logPose, 1000);
 
 		this._sessions = new Map();
-		this._activeSession = null;
+		this._activeSession = null;     // active ARKit session
+		this._frameSession = null;		// session for the current frame
 
 		// A div prepended to body children that will contain the session layer
 		this._wrapperDiv = document.createElement('div');
@@ -37,11 +38,13 @@ export default class ARKitDevice extends XRDevice {
 		}
 
 		this._headModelMatrix = mat4.create(); // Model and view matrix are the same
+		this._headModelMatrixInverse = mat4.create();
+
 		this._projectionMatrix = mat4.create();
 		this._eyeLevelMatrix = mat4.identity(mat4.create());
 		this._stageMatrix = mat4.identity(mat4.create());
 		this._stageMatrix[13] = -1.3;
-
+		this._identityMatrix = mat4.identity(mat4.create());
 		this._baseFrameSet = false;
 		this._frameOfRefRequestsWaiting = [];
 
@@ -92,7 +95,9 @@ export default class ARKitDevice extends XRDevice {
 	}
 
 	setBaseViewMatrix(matrix) {
-		mat4.copy(this._headModelMatrix, matrix);
+		mat4.copy(this._headModelMatrixInverse, matrix);
+        mat4.invert(this._headModelMatrix, this._headModelMatrixInverse);
+
 		if (!this._baseFrameSet) {
 			this._baseFrameSet = true;
 			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
@@ -118,7 +123,7 @@ export default class ARKitDevice extends XRDevice {
 	isSessionSupported(mode) {
 		// Note: We support only immersive-ar mode for now.
 		//       See https://github.com/MozillaReality/webxr-ios-js/pull/34#discussion_r334910337
-		return mode === 'immersive-ar';
+		return mode === 'immersive-ar' || mode === 'inline';
 	}
 
 	/**
@@ -178,6 +183,15 @@ export default class ARKitDevice extends XRDevice {
 			console.error('Invalid session mode', mode);
 			return Promise.reject();
 		}
+
+		if (mode === 'inline') {
+			const session = new Session(mode, enabledFeatures);
+
+			this._sessions.set(session.id, session);
+	
+			return Promise.resolve(session.id);
+		}
+
 		if (!this._arKitWrapper) {
 			console.error('Session requested without an ARKitWrapper');
 			return Promise.reject();
@@ -218,29 +232,52 @@ export default class ARKitDevice extends XRDevice {
 	}
 
 	onBaseLayerSet(sessionId, layer) {
-		this._sessions.get(sessionId).baseLayer = layer; // XRWebGLLayer
-		this._wrapperDiv.appendChild(layer.context.canvas);
+	    const session = this._sessions.get(sessionId);
+    	const canvas = layer.context.canvas;
 
-		layer.context.canvas.style.width = "100%";
-		layer.context.canvas.style.height = "100%";
+		session.baseLayer = layer; // XRWebGLLayer
+
+		if (!session.immersive) {
+			return;
+		}
+
+		this._wrapperDiv.appendChild(canvas);
+
+		canvas.style.width = "100%";
+		canvas.style.height = "100%";
 		// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
 		// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
 	requestAnimationFrame(callback, ...params) {
-		this._arKitWrapper.requestAnimationFrame(callback, params);
+		if (this._activeSession) {
+			return this._arKitWrapper.requestAnimationFrame(callback, params);
+		} else {
+			return window.requestAnimationFrame(callback, params);
+		}
 	}
 
 	cancelAnimationFrame(handle) {
 		return window.cancelAnimationFrame(handle);
 	}
 
-	onFrameStart(sessionId) {
-		// TODO
+	onFrameStart(sessionId, renderState) {
+		const session = this._sessions.get(sessionId);
+
+		this._frameSession = session;
+
+		// If the session is inline make sure the projection matrix matches the 
+		// aspect ratio of the underlying WebGL canvas.
+		if (!session.immersive && session.baseLayer) {
+			const canvas = session.baseLayer.context.canvas;
+			// Update the projection matrix.
+			mat4.perspective(this._projectionMatrix, renderState.inlineVerticalFieldOfView,
+				canvas.width/canvas.height, renderState.depthNear, renderState.depthFar);
+		}
 	}
 
 	onFrameEnd(sessionId) {
-		// TODO
+		this._frameSession = null;
 	}
 
 	requestFrameOfReferenceTransform(type, options) {
@@ -285,12 +322,17 @@ export default class ARKitDevice extends XRDevice {
 
 	endSession(sessionId) {
 		const session = this._sessions.get(sessionId);
+
 		if (!session || session.ended) { return; }
 		session.ended = true;
+
 		if (this._activeSession === session) {
 			this._activeSession = null;
+			mat4.identity(this._headModelMatrix);
 			this._arKitWrapper.stop();
 		}
+		this._frameSession = null;
+
 		if (session.baseLayer !== null) {
 			this._wrapperDiv.removeChild(session.baseLayer.context.canvas);
 		}
@@ -298,11 +340,11 @@ export default class ARKitDevice extends XRDevice {
 
 	getViewport(sessionId, eye, layer, target) {
 		// A single viewport that covers the entire screen
-		const { offsetWidth, offsetHeight } = layer.context.canvas;
+		const { width, height } = layer.context.canvas;
 		target.x = 0;
 		target.y = 0;
-		target.width = offsetWidth;
-		target.height = offsetHeight;
+		target.width = width;
+		target.height = height;
 		return true;
 	}
 
@@ -312,11 +354,19 @@ export default class ARKitDevice extends XRDevice {
 
 	// The model and view matrices are the same head-model matrix
 	getBasePoseMatrix() {
-		return this._headModelMatrix;
+		if (this._frameSession.immersive) {
+			return this._headModelMatrix;
+		} else {
+			return this._identityMatrix;
+		}
 	}
 
 	getBaseViewMatrix(eye) {
-		return this._headModelMatrix;
+		if (this._frameSession.immersive) {
+			return this._headModelMatrix;
+		} else {
+			return this._identityMatrix;
+		}
 	}
 
 	requestStageBounds() {
@@ -345,6 +395,7 @@ class Session {
 	constructor(mode, enabledFeatures) {
 		this.mode = mode;
 		this.enabledFeatures = enabledFeatures;
+		this.immersive = mode == 'immersive-ar';		
 		this.ended = null; // boolean
 		this.baseLayer = null; // XRWebGLLayer
 		this.id = ++SESSION_ID;

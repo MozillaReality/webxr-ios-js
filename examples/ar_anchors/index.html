@@ -114,7 +114,9 @@
 				session.requestAnimationFrame(async (t, frame) => {
 					// get the location of the device, and use it to create an 
 					// anchor with the identity orientation
-					mat4.copy(workingMatrix1, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
+					mat4.copy(workingMatrix1, 
+						frame.getPose(localReferenceSpace, 
+									  viewerReferenceSpace).transform.matrix);
 					mat4.getTranslation(workingVec3, workingMatrix1);
 					mat4.fromTranslation(workingMatrix1, workingVec3);
 
@@ -199,7 +201,7 @@
 					engine.preRender(
 						session.renderState.baseLayer.getViewport(view),
 						view.projectionMatrix,
-						view.transform.inverse.matrix
+						view.transform.matrix
 					)
 					engine.render();
 				}

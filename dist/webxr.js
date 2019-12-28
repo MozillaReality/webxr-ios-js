@@ -1186,6 +1186,7 @@ class XRInputSourceEvent extends Event {
       frame: eventInitDict.frame,
       inputSource: eventInitDict.inputSource
     };
+    Object.setPrototypeOf(this, XRInputSourceEvent.prototype);
   }
   get frame() { return this[PRIVATE$12].frame; }
   get inputSource() { return this[PRIVATE$12].inputSource; }
@@ -1198,6 +1199,7 @@ class XRSessionEvent extends Event {
     this[PRIVATE$13] = {
       session: eventInitDict.session
     };
+    Object.setPrototypeOf(this, XRSessionEvent.prototype);
   }
   get session() { return this[PRIVATE$13].session; }
 }
@@ -1211,6 +1213,7 @@ class XRInputSourcesChangeEvent extends Event {
       added: eventInitDict.added,
       removed: eventInitDict.removed
     };
+    Object.setPrototypeOf(this, XRInputSourcesChangeEvent.prototype);
   }
   get session() { return this[PRIVATE$14].session; }
   get added() { return this[PRIVATE$14].added; }
@@ -1447,7 +1450,7 @@ class XRSession$1 extends EventTarget {
     if (this[PRIVATE$15].ended) {
       return;
     }
-    if (this.immersive) {
+    if (this[PRIVATE$15].immersive) {
       this[PRIVATE$15].ended = true;
       this[PRIVATE$15].device.removeEventListener('@@webvr-polyfill/vr-present-start',
                                                  this[PRIVATE$15].onPresentationStart);
@@ -1557,6 +1560,7 @@ class XRReferenceSpaceEvent extends Event {
       referenceSpace: eventInitDict.referenceSpace,
       transform: eventInitDict.transform || null
     };
+    Object.setPrototypeOf(this, XRReferenceSpaceEvent.prototype);
   }
   get referenceSpace() { return this[PRIVATE$17].referenceSpace; }
   get transform() { return this[PRIVATE$17].transform; }
@@ -1901,7 +1905,32 @@ function getRotation$1(out, mat) {
 
 
 
-
+function perspective$1(out, fovy, aspect, near, far) {
+  let f = 1.0 / Math.tan(fovy / 2), nf;
+  out[0] = f / aspect;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = f;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[11] = -1;
+  out[12] = 0;
+  out[13] = 0;
+  out[15] = 0;
+  if (far != null && far !== Infinity) {
+    nf = 1 / (near - far);
+    out[10] = (far + near) * nf;
+    out[14] = (2 * far * near) * nf;
+  } else {
+    out[10] = -1;
+    out[14] = -2 * near;
+  }
+  return out;
+}
 
 
 
@@ -3089,7 +3118,8 @@ class ARKitWrapper extends EventTarget {
 				};
 				extraOptions.callback = callbackName;
 			}
-			window.webkit.messageHandlers[actionName].postMessage(Object.assign({}, options, extraOptions));
+			let handler = window.webkit.messageHandlers[actionName];
+			handler.postMessage(Object.assign({}, options, extraOptions));
 			if (!callback) { resolve(); }
 		});
 	}
@@ -3162,7 +3192,7 @@ class ARKitWrapper extends EventTarget {
 		});
 	}
 	_stop() {
-		return this._sendMessage('stop');
+		return this._sendMessage('stopAR');
 	}
 	_setUIOptions(options) {
 		return this._sendMessage('setUIOptions', options, true, false);
@@ -3440,6 +3470,8 @@ class ARKitWrapper extends EventTarget {
 					console.log('created dummy anchor from hit test');
 					anchor.placeholder = true;
 					this._anchors.set(hit.uuid, anchor);
+				} else if (anchor.placeholder) {
+					anchor.updateModelMatrix(hit.anchor_transform, this._timestamp);
 				}
 				const anchorOffset = new XRAnchorOffset(anchor, hit.local_transform);
 				resolve(anchorOffset);
@@ -3533,7 +3565,7 @@ class ARKitWrapper extends EventTarget {
 				return;
 			}
 			console.log('----STOP');
-			this._stop().then((result) => {
+			this._stop().then((results) => {
 				this._isWatching = false;
 				resolve(results);
 			});
@@ -3790,6 +3822,7 @@ class ARKitDevice extends XRDevice {
 		this._throttledLogPose = throttle(this.logPose, 1000);
 		this._sessions = new Map();
 		this._activeSession = null;
+		this._frameSession = null;
 		this._wrapperDiv = document.createElement('div');
 		this._wrapperDiv.setAttribute('class', 'arkit-device-wrapper');
 		const insertWrapperDiv = () => {
@@ -3801,10 +3834,12 @@ class ARKitDevice extends XRDevice {
 			document.addEventListener('DOMContentLoaded', insertWrapperDiv);
 		}
 		this._headModelMatrix = create$5();
+		this._headModelMatrixInverse = create$5();
 		this._projectionMatrix = create$5();
 		this._eyeLevelMatrix = identity$3(create$5());
 		this._stageMatrix = identity$3(create$5());
 		this._stageMatrix[13] = -1.3;
+		this._identityMatrix = identity$3(create$5());
 		this._baseFrameSet = false;
 		this._frameOfRefRequestsWaiting = [];
 		this._depthNear = 0.1;
@@ -3843,7 +3878,8 @@ class ARKitDevice extends XRDevice {
 		copy$5(this._projectionMatrix, matrix);
 	}
 	setBaseViewMatrix(matrix) {
-		copy$5(this._headModelMatrix, matrix);
+		copy$5(this._headModelMatrixInverse, matrix);
+        invert$3(this._headModelMatrix, this._headModelMatrixInverse);
 		if (!this._baseFrameSet) {
 			this._baseFrameSet = true;
 			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
@@ -3862,7 +3898,7 @@ class ARKitDevice extends XRDevice {
 	get depthFar() { return this._depthFar; }
 	set depthFar(val) { this._depthFar = val; }
 	isSessionSupported(mode) {
-		return mode === 'immersive-ar';
+		return mode === 'immersive-ar' || mode === 'inline';
 	}
 	isFeatureSupported(featureDescriptor) {
 		switch(featureDescriptor) {
@@ -3899,6 +3935,11 @@ class ARKitDevice extends XRDevice {
 			console.error('Invalid session mode', mode);
 			return Promise.reject();
 		}
+		if (mode === 'inline') {
+			const session = new Session(mode, enabledFeatures);
+			this._sessions.set(session.id, session);
+			return Promise.resolve(session.id);
+		}
 		if (!this._arKitWrapper) {
 			console.error('Session requested without an ARKitWrapper');
 			return Promise.reject();
@@ -3933,20 +3974,37 @@ class ARKitDevice extends XRDevice {
 		return watchResult;
 	}
 	onBaseLayerSet(sessionId, layer) {
-		this._sessions.get(sessionId).baseLayer = layer;
-		this._wrapperDiv.appendChild(layer.context.canvas);
-		layer.context.canvas.style.width = "100%";
-		layer.context.canvas.style.height = "100%";
+	    const session = this._sessions.get(sessionId);
+    	const canvas = layer.context.canvas;
+		session.baseLayer = layer;
+		if (!session.immersive) {
+			return;
+		}
+		this._wrapperDiv.appendChild(canvas);
+		canvas.style.width = "100%";
+		canvas.style.height = "100%";
 	}
 	requestAnimationFrame(callback, ...params) {
-		this._arKitWrapper.requestAnimationFrame(callback, params);
+		if (this._activeSession) {
+			return this._arKitWrapper.requestAnimationFrame(callback, params);
+		} else {
+			return window.requestAnimationFrame(callback, params);
+		}
 	}
 	cancelAnimationFrame(handle) {
 		return window.cancelAnimationFrame(handle);
 	}
-	onFrameStart(sessionId) {
+	onFrameStart(sessionId, renderState) {
+		const session = this._sessions.get(sessionId);
+		this._frameSession = session;
+		if (!session.immersive && session.baseLayer) {
+			const canvas = session.baseLayer.context.canvas;
+			perspective$1(this._projectionMatrix, renderState.inlineVerticalFieldOfView,
+				canvas.width/canvas.height, renderState.depthNear, renderState.depthFar);
+		}
 	}
 	onFrameEnd(sessionId) {
+		this._frameSession = null;
 	}
 	requestFrameOfReferenceTransform(type, options) {
 		return new Promise((resolve, reject) => {
@@ -3985,28 +4043,38 @@ class ARKitDevice extends XRDevice {
 		session.ended = true;
 		if (this._activeSession === session) {
 			this._activeSession = null;
+			identity$3(this._headModelMatrix);
 			this._arKitWrapper.stop();
 		}
+		this._frameSession = null;
 		if (session.baseLayer !== null) {
 			this._wrapperDiv.removeChild(session.baseLayer.context.canvas);
 		}
 	}
 	getViewport(sessionId, eye, layer, target) {
-		const { offsetWidth, offsetHeight } = layer.context.canvas;
+		const { width, height } = layer.context.canvas;
 		target.x = 0;
 		target.y = 0;
-		target.width = offsetWidth;
-		target.height = offsetHeight;
+		target.width = width;
+		target.height = height;
 		return true;
 	}
 	getProjectionMatrix(eye) {
 		return this._projectionMatrix;
 	}
 	getBasePoseMatrix() {
-		return this._headModelMatrix;
+		if (this._frameSession.immersive) {
+			return this._headModelMatrix;
+		} else {
+			return this._identityMatrix;
+		}
 	}
 	getBaseViewMatrix(eye) {
-		return this._headModelMatrix;
+		if (this._frameSession.immersive) {
+			return this._headModelMatrix;
+		} else {
+			return this._identityMatrix;
+		}
 	}
 	requestStageBounds() {
 		return null;
@@ -4027,6 +4095,7 @@ class Session {
 	constructor(mode, enabledFeatures) {
 		this.mode = mode;
 		this.enabledFeatures = enabledFeatures;
+		this.immersive = mode == 'immersive-ar';
 		this.ended = null;
 		this.baseLayer = null;
 		this.id = ++SESSION_ID;
@@ -4075,12 +4144,18 @@ let _arKitWrapper = null;
 const installAnchorsExtension = () => {
 	if (window.XRFrame === undefined) { return; }
 	XRFrame.prototype.addAnchor = async function addAnchor(value, referenceSpace) {
+		if (!this.session[PRIVATE$15].immersive) {
+			return Promise.reject();
+		}
+		const workingMatrix1 = create$5();
 		if (value instanceof XRHitResult) {
-			return _arKitWrapper.createAnchorFromHit(value._hit);
-		} else if (value instanceof Float32Array) {
+			multiply$5(workingMatrix1, value._hit.anchor_transform, value._hit.local_transform);
+			value = workingMatrix1;
+		}
+		if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
-				let localReferenceSpace = this.session._localSpace;
-				copy$5(_workingMatrix, this.getPose(referenceSpace, localReferenceSpace).transform.matrix);
+				let localReferenceSpace = this.session[PRIVATE$15]._localSpace;
+				copy$5(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
 				const anchorInWorldMatrix = multiply$5(create$5(), _workingMatrix, value);
 				_arKitWrapper.createAnchor(anchorInWorldMatrix)
 					.then(resolve)
@@ -4102,9 +4177,9 @@ const installAnchorsExtension = () => {
 };
 const installHitTestingExtension = () => {
 	if (window.XRSession === undefined) { return }
-	XRSession.prototype._original_XRSession_rAF = XRSession.prototype.requestAnimationFrame;
+	XRSession$1.prototype._original_XRSession_rAF = XRSession$1.prototype.requestAnimationFrame;
 	let _hitList = [];
-	XRSession.prototype.requestAnimationFrame = function (callback) {
+	XRSession$1.prototype.requestAnimationFrame = function (callback) {
 		this._original_XRSession_rAF((rightNow, frame) => {
 			for (const hit of _hitList) {
 				hit(rightNow, frame);
@@ -4113,12 +4188,15 @@ const installHitTestingExtension = () => {
 			callback(rightNow,frame);
 		});
 	};
-	XRSession.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
+	XRSession$1.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
+		if (!this[PRIVATE$15].immersive) {
+			return Promise.reject();
+		}
 		return new Promise((resolve, reject) => {
 			const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
 			_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
 				if (hits.length === 0) { resolve([]); }
-				let localReferenceSpace = this._localSpace;
+				let localReferenceSpace = this[PRIVATE$15]._localSpace;
 				let ts = _arKitWrapper._timestamp;
 				_hitList.push( (rightNow, frame) => {
 					copy$5(_workingMatrix,
@@ -4142,16 +4220,25 @@ const installRealWorldGeometryExtension = () => {
 	if (window.XRFrame === undefined || window.XRSession === undefined) { return; }
 	Object.defineProperty(XRFrame.prototype, 'worldInformation', {
 		get: function getWorldInformation() {
+			if (!this.session[PRIVATE$15].immersive) {
+				throw new Error('Not implemented');
+			}
 			return  _arKitWrapper.getWorldInformation();
 		}
 	});
-	XRSession.prototype.updateWorldSensingState = function UpdateWorldSensingState(options) {
+	XRSession$1.prototype.updateWorldSensingState = function UpdateWorldSensingState(options) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.updateWorldSensingState(options);
 	};
 };
 const installLightingEstimationExtension = () => {
 	if (window.XRFrame === undefined) { return; }
 	XRFrame.prototype.getGlobalLightEstimate = function () {
+		if (!this.session[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.getLightProbe();
 	};
 	XRFrame.prototype.getGlobalReflectionProbe = function () {
@@ -4160,28 +4247,52 @@ const installLightingEstimationExtension = () => {
 };
 const installNonstandardExtension = () => {
 	if (window.XRSession === undefined) { return; }
-	XRSession.prototype.nonStandard_setNumberOfTrackedImages = function setNumberOfTrackedImages(count) {
+	XRSession$1.prototype.nonStandard_setNumberOfTrackedImages = function setNumberOfTrackedImages(count) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.setNumberOfTrackedImages(count);
 	};
-	XRSession.prototype.nonStandard_createDetectionImage = function createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+	XRSession$1.prototype.nonStandard_createDetectionImage = function createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters);
 	};
-	XRSession.prototype.nonStandard_destroyDetectionImage = function destroyDetectionImage(uid) {
+	XRSession$1.prototype.nonStandard_destroyDetectionImage = function destroyDetectionImage(uid) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.createDetectionImage(uid);
 	};
-	XRSession.prototype.nonStandard_activateDetectionImage = function activateDetectionImage(uid) {
+	XRSession$1.prototype.nonStandard_activateDetectionImage = function activateDetectionImage(uid) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return  _arKitWrapper.activateDetectionImage(uid);
 	};
-	XRSession.prototype.nonStandard_deactivateDetectionImage = function deactivateDetectionImage(uid) {
+	XRSession$1.prototype.nonStandard_deactivateDetectionImage = function deactivateDetectionImage(uid) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return  _arKitWrapper.deactivateDetectionImage(uid);
 	};
-	XRSession.prototype.nonStandard_getWorldMap = function getWorldMap() {
+	XRSession$1.prototype.nonStandard_getWorldMap = function getWorldMap() {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.getWorldMap();
 	};
-	XRSession.prototype.nonStandard_setWorldMap = function setWorldMap(worldMap) {
+	XRSession$1.prototype.nonStandard_setWorldMap = function setWorldMap(worldMap) {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.setWorldMap(worldMap);
 	};
-	XRSession.prototype.nonStandard_getWorldMappingStatus = function getWorldMappingStatus() {
+	XRSession$1.prototype.nonStandard_getWorldMappingStatus = function getWorldMappingStatus() {
+		if (!this[PRIVATE$15].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper._worldMappingStatus;
 	};
 };
@@ -4192,39 +4303,18 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 		XR.prototype._isSessionSupported = XR.prototype.isSessionSupported;
 		XR.prototype._requestSession = XR.prototype.requestSession;
 		XR.prototype.isSessionSupported = function (mode) {
-			if (mode !== 'immersive-ar') return Promise.resolve(false);
+			if (!(mode === 'immersive-ar' || mode === 'inline')) return Promise.resolve(false);
 			return this._isSessionSupported(mode);
 		};
 		XR.prototype.requestSession = async function (mode, xrSessionInit) {
-			if (mode !== 'immersive-ar') {
-				throw new DOMException('Polyfill Error: only immersive-ar mode is supported.');
+			if (!(mode === 'immersive-ar' || mode === 'inline')) {
+				throw new DOMException('Polyfill Error: only immersive-ar or inline mode is supported.');
 			}
 			let session = await this._requestSession(mode, xrSessionInit);
-			session._localSpace = await session.requestReferenceSpace('local');
+			if (mode === 'immersive-ar') {
+				session[PRIVATE$15]._localSpace = await session.requestReferenceSpace('local');
+			}
 			return session
-		};
-	}
-	if(window.XRFrame) {
-		XRFrame.prototype._getPose = window.XRFrame.prototype.getPose;
-		XRFrame.prototype.getPose = function (space, baseSpace) {
-			if (space._specialType === 'target-ray' || space._specialType === 'grip') {
-				return this._getPose(space, baseSpace);
-			}
-			const baseSpaceViewerPose = this.getViewerPose(baseSpace);
-			if (!baseSpaceViewerPose) {
-				return null;
-			}
-			copy$5(_workingMatrix, baseSpaceViewerPose.transform.matrix);
-			const spaceViewerPose = this.getViewerPose(space);
-			if (!spaceViewerPose) {
-				return null;
-			}
-			invert$3(_workingMatrix2, spaceViewerPose.transform.matrix);
-			const resultMatrix = multiply$5(create$5(), _workingMatrix, _workingMatrix2);
-			return new XRPose(
-				new XRRigidTransform(resultMatrix),
-				false
-			);
 		};
 	}
 	installAnchorsExtension();

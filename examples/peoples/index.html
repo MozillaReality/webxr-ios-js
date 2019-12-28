@@ -55,6 +55,7 @@
 			const workingVec3 = vec3.create();
 
 			const coordinatesQueue = [];
+			const anchorHits = [];
 
 			const clock = new THREE.Clock();
 			const meshes = [];
@@ -287,7 +288,7 @@
 				const size = 0.05;
 				if (hits.length > 0) {
 					const hit = hits[0];
-					frame.addAnchor(hit, viewerReferenceSpace).then(anchor => {
+					frame.addAnchor(hit, localReferenceSpace).then(anchor => {
 						engine.addAnchoredNode(anchor, createSceneGraphNode());
 					}).catch(err => {
 						console.error('Error adding anchor', err);
@@ -368,13 +369,17 @@
 
 				for (const coordinates of coordinatesQueue) {
 					hitTestWithScreenCoordinates(coordinates[0], coordinates[1], frame)
-						.then(hits => handleHitResults(hits, frame))
+					.then(hits => anchorHits.push(hits))
 						.catch(err => {
 							console.error('Error testing hits', err);
 						});
 				}
-
 				coordinatesQueue.length = 0;
+
+				for (const hits of anchorHits) {
+					handleHitResults(hits, frame)
+				}
+				anchorHits.length = 0;
 
 				const pose = frame.getViewerPose(localReferenceSpace);
 				if (!pose){
@@ -386,13 +391,14 @@
 
 				engine.startFrame();
 				for (const view of pose.views) {
-					engine.camera.matrix.fromArray(view.transform.inverse.matrix);
+					engine.camera.matrix.fromArray(view.transform.matrix);
 					engine.camera.updateMatrixWorld();
 					engine.camera.projectionMatrix.fromArray(view.projectionMatrix);
 
 					engine.renderer.setSize(canvas.offsetWidth, canvas.offsetHeight, false)
 					const viewport = session.renderState.baseLayer.getViewport(view);
-					engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+					//engine.renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+					engine.renderer.setViewport(viewport.x / window.devicePixelRatio, viewport.y / window.devicePixelRatio, viewport.width / window.devicePixelRatio, viewport.height / window.devicePixelRatio)
 
 					composer.render(0.01);
 				}

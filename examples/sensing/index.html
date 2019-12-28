@@ -408,7 +408,7 @@
 				engine.preRender(
 					session.renderState.baseLayer.getViewport(view),
 					view.projectionMatrix,
-					view.transform.inverse.matrix
+					view.transform.matrix
 				);
 				engine.render();
 			}

@@ -35,7 +35,8 @@
 			const workingVec3 = vec3.create();
 
 			const coordinatesQueue = [];
-
+			const anchorHits = [];
+			
 			document.getElementById('description').addEventListener('touchstart', event => {
 				event.target.style.display = 'none' 
 				event.stopPropagation()
@@ -179,13 +180,17 @@
 
 				for (const coordinates of coordinatesQueue) {
 					hitTestWithScreenCoordinates(coordinates[0], coordinates[1], frame)
-						.then(hits => handleHitResults(hits, frame))
+						.then(hits => anchorHits.push(hits))
 						.catch(err => {
 							console.error('Error testing hits', err);
 						});
 				}
-
 				coordinatesQueue.length = 0;
+
+				for (const hits of anchorHits) {
+					handleHitResults(hits, frame)
+				}
+				anchorHits.length = 0;
 
 				const pose = frame.getViewerPose(localReferenceSpace);
 				if (!pose) {
@@ -198,7 +203,7 @@
 					engine.preRender(
 						session.renderState.baseLayer.getViewport(view),
 						view.projectionMatrix,
-						view.transform.inverse.matrix
+						view.transform.matrix
 					);
 					engine.render();
 				}

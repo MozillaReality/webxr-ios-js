@@ -34,6 +34,6 @@
   },
   "dependencies": {
     "gl-matrix": "^2.5.1",
-    "webxr-polyfill": "git://github.com/takahirox/webxr-polyfill.git#ForWebXRViewer"
+    "webxr-polyfill": "git://github.com/mozilla-mobile/webxr-polyfill-for-ios-viewer.git#webxr-ios"
   }
 }

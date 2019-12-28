@@ -8,6 +8,8 @@
 
 import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill';
 
+import XRSession, {PRIVATE as XRSESSION_PRIVATE} from 'webxr-polyfill/src/api/XRSession';
+
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4';
 import * as vec3 from 'gl-matrix/src/gl-matrix/vec3';
 
@@ -52,11 +54,12 @@ const xrPolyfill =  !isWebXRViewer ? null : new WebXRPolyfill(null, {
  */
 const _convertRayToARKitScreenCoordinates = (ray, projectionMatrix) => {
 	const proj = vec3.transformMat4(vec3.create(), ray, projectionMatrix);
-	//console.log('project', ...proj);
+//	console.log('project', ...proj);
 
 	const x = (proj[0] + 1) / 2;
 	const y = (-proj[1] + 1) / 2;
 
+//	console.log('result', x, y);
 	return [x, y];
 };
 
@@ -79,17 +82,28 @@ const installAnchorsExtension = () => {
 	 * @return {Promise<XRAnchor>}
 	 */
 	XRFrame.prototype.addAnchor = async function addAnchor(value, referenceSpace) {
+		if (!this.session[XRSESSION_PRIVATE].immersive) {
+			return Promise.reject(); 
+		}
+
+		const workingMatrix1 = mat4.create();
+
 		if (value instanceof XRHitResult) {
-			return _arKitWrapper.createAnchorFromHit(value._hit);
-		} else if (value instanceof Float32Array) {
+			// let tempAnchor = await _arKitWrapper.createAnchorFromHit(value._hit);
+			// value = tempAnchor.modelMatrix
+
+			mat4.multiply(workingMatrix1, value._hit.anchor_transform, value._hit.local_transform)
+			value = workingMatrix1
+		} 
+		if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				// we assume that the eye-level reference frame (local reference space)
 				// was obtained during requestSession below in this polyfill. 
 				// needs to be done so that this method doesn't actually need to 
 				// be async and wait
 
-				let localReferenceSpace = this.session._localSpace;
-				mat4.copy(_workingMatrix, this.getPose(referenceSpace, localReferenceSpace).transform.matrix);
+				let localReferenceSpace = this.session[XRSESSION_PRIVATE]._localSpace;
+				mat4.copy(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
 				const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value);
 				_arKitWrapper.createAnchor(anchorInWorldMatrix)
 					.then(resolve)
@@ -172,6 +186,9 @@ const installHitTestingExtension = () => {
 			return Promise.reject('Only head-model hit testing is supported')
 		}
 		*/
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			return Promise.reject(); 
+		}
 
 		return new Promise((resolve, reject) => {
 			const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
@@ -182,7 +199,7 @@ const installHitTestingExtension = () => {
 				// Hit results are in the tracker (aka eye-level) coordinate system (local reference space),
 				// so transform them back to head-model (viewer) since the passed origin and results must be in the same coordinate system
 
-				let localReferenceSpace = this._localSpace;
+				let localReferenceSpace = this[XRSESSION_PRIVATE]._localSpace;
 				let ts = _arKitWrapper._timestamp;
 
 				// can't evaluate this till the next rAF, because getPose is done
@@ -218,6 +235,10 @@ const installRealWorldGeometryExtension = () => {
 	 */
 	Object.defineProperty(XRFrame.prototype, 'worldInformation', {
 		get: function getWorldInformation() {
+			if (!this.session[XRSESSION_PRIVATE].immersive) {
+				throw new Error('Not implemented');
+			}	
+	
 			return  _arKitWrapper.getWorldInformation();
 		}
 	});
@@ -230,6 +251,10 @@ const installRealWorldGeometryExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.updateWorldSensingState = function UpdateWorldSensingState(options) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}	
+
 		return _arKitWrapper.updateWorldSensingState(options);
 	};
 };
@@ -244,6 +269,10 @@ const installLightingEstimationExtension = () => {
 	 * @return {XRLightProbe}
 	 */
 	XRFrame.prototype.getGlobalLightEstimate = function () {
+		if (!this.session[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}	
+
 		return _arKitWrapper.getLightProbe();
 	};
 
@@ -264,6 +293,10 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_setNumberOfTrackedImages = function setNumberOfTrackedImages(count) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+
 		return _arKitWrapper.setNumberOfTrackedImages(count);
 	};
 
@@ -272,6 +305,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_createDetectionImage = function createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters);
 	};
 
@@ -280,6 +316,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_destroyDetectionImage = function destroyDetectionImage(uid) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.createDetectionImage(uid);
 	};
 
@@ -288,6 +327,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_activateDetectionImage = function activateDetectionImage(uid) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return  _arKitWrapper.activateDetectionImage(uid);
 	};
 
@@ -296,6 +338,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_deactivateDetectionImage = function deactivateDetectionImage(uid) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return  _arKitWrapper.deactivateDetectionImage(uid);
 	};
 
@@ -303,6 +348,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_getWorldMap = function getWorldMap() {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.getWorldMap();
 	};
 
@@ -311,6 +359,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_setWorldMap = function setWorldMap(worldMap) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper.setWorldMap(worldMap);
 	};
 
@@ -318,6 +369,9 @@ const installNonstandardExtension = () => {
 	 * @return
 	 */
 	XRSession.prototype.nonStandard_getWorldMappingStatus = function getWorldMappingStatus() {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
 		return _arKitWrapper._worldMappingStatus;
 	};
 };
@@ -340,68 +394,70 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 		XR.prototype._isSessionSupported = XR.prototype.isSessionSupported;
 		XR.prototype._requestSession = XR.prototype.requestSession;
 		XR.prototype.isSessionSupported = function (mode) {
-			if (mode !== 'immersive-ar') return Promise.resolve(false);
+			if (!(mode === 'immersive-ar' || mode === 'inline')) return Promise.resolve(false);
 			return this._isSessionSupported(mode);
 		};
 		XR.prototype.requestSession = async function (mode, xrSessionInit) {
-			if (mode !== 'immersive-ar') {
-				throw new DOMException('Polyfill Error: only immersive-ar mode is supported.'); 
+			if (!(mode === 'immersive-ar' || mode === 'inline')) {
+				throw new DOMException('Polyfill Error: only immersive-ar or inline mode is supported.'); 
 			}
 
 			let session = await this._requestSession(mode, xrSessionInit)
-			session._localSpace = await session.requestReferenceSpace('local')
+			if (mode === 'immersive-ar') {
+				session[XRSESSION_PRIVATE]._localSpace = await session.requestReferenceSpace('local')
+			}
 			return session
 		};
 	}
 
-	if(window.XRFrame) {
-		// Note: The official WebXR polyfill doesn't support XRFrame.getPose() for
-		//       non target-ray/grip space yet (09/24/2019).
-		//       We need working .getPose() so supporting by ourselves here for now.
-		XRFrame.prototype._getPose = window.XRFrame.prototype.getPose;
-		XRFrame.prototype.getPose = function (space, baseSpace) {
-			if (space._specialType === 'target-ray' || space._specialType === 'grip') {
-				return this._getPose(space, baseSpace);
-			}
+	// if(window.XRFrame) {
+		// // Note: The official WebXR polyfill doesn't support XRFrame.getPose() for
+		// //       non target-ray/grip space yet (09/24/2019).
+		// //       We need working .getPose() so supporting by ourselves here for now.
+		// XRFrame.prototype._getPose = window.XRFrame.prototype.getPose;
+		// XRFrame.prototype.getPose = function (space, baseSpace) {
+		// 	if (space._specialType === 'target-ray' || space._specialType === 'grip') {
+		// 		return this._getPose(space, baseSpace);
+		// 	}
 
-			// @TODO: More proper handling
-			//   - Error handling
-			//   - Support XRSpace. Assuming the both spaces are XRReferenceSpace for now
-			//   - Check whether poses must be limited. Assuming it's false for now
-			//   - Support emulatedPosition true case. Assuming it's false for now
-			// See https://immersive-web.github.io/webxr/#populate-the-pose
+		// 	// @TODO: More proper handling
+		// 	//   - Error handling
+		// 	//   - Support XRSpace. Assuming the both spaces are XRReferenceSpace for now
+		// 	//   - Check whether poses must be limited. Assuming it's false for now
+		// 	//   - Support emulatedPosition true case. Assuming it's false for now
+		// 	// See https://immersive-web.github.io/webxr/#populate-the-pose
 
-			const baseSpaceViewerPose = this.getViewerPose(baseSpace);
+		// 	const baseSpaceViewerPose = this.getViewerPose(baseSpace);
 
-			if (!baseSpaceViewerPose) {
-				return null;
-			}
+		// 	if (!baseSpaceViewerPose) {
+		// 		return null;
+		// 	}
 
-			// Note: Currently (10/10/2019) the official WebXR polyfill
-			//       always returns the same XRViewerPose instance from
-			//       .getViewerPose() of a XRFrame instance.
-			//       So we need to copy the matrix before calling the next
-			//       .getViewerPose().
-			//       See https://github.com/immersive-web/webxr-polyfill/issues/97
+		// 	// Note: Currently (10/10/2019) the official WebXR polyfill
+		// 	//       always returns the same XRViewerPose instance from
+		// 	//       .getViewerPose() of a XRFrame instance.
+		// 	//       So we need to copy the matrix before calling the next
+		// 	//       .getViewerPose().
+		// 	//       See https://github.com/immersive-web/webxr-polyfill/issues/97
 
-			mat4.copy(_workingMatrix, baseSpaceViewerPose.transform.matrix);
+		// 	mat4.copy(_workingMatrix, baseSpaceViewerPose.transform.matrix);
 
-			const spaceViewerPose = this.getViewerPose(space);
+		// 	const spaceViewerPose = this.getViewerPose(space);
 
-			if (!spaceViewerPose) {
-				return null;
-			}
+		// 	if (!spaceViewerPose) {
+		// 		return null;
+		// 	}
 
-			mat4.invert(_workingMatrix2, spaceViewerPose.transform.matrix);
+		// 	mat4.invert(_workingMatrix2, spaceViewerPose.transform.matrix);
 
-			const resultMatrix = mat4.multiply(mat4.create(), _workingMatrix, _workingMatrix2);
+		// 	const resultMatrix = mat4.multiply(mat4.create(), _workingMatrix, _workingMatrix2);
 
-			return new XRPose(
-				new XRRigidTransform(resultMatrix),
-				false
-			);
-		}
-	}
+		// 	return new XRPose(
+		// 		new XRRigidTransform(resultMatrix),
+		// 		false
+		// 	);
+		// }
+	// }
 
 	// Now install a few proposed AR extensions to WebXR Device API.
 
