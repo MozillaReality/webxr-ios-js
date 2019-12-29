@@ -224,6 +224,8 @@ export default class ARKitDevice extends XRDevice {
 			this._sessions.set(session.id, session);
 			this._activeSession = session;
 
+			this.dispatchEvent('@@webxr-polyfill/vr-present-start', session.id);
+
 			return Promise.resolve(session.id);
 		}).catch((...params) => {
 			console.error("session request failed: ", ...params);
@@ -295,26 +297,38 @@ export default class ARKitDevice extends XRDevice {
 		// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
+	userEndedSession() {
+		if (this._activeSession) {
+			let session = this._activeSession
+			
+			if (session.immersive && !session.ended) {
+				this.endSession(session.id)
+
+				this.dispatchEvent('@@webxr-polyfill/vr-present-end', session.id);
+			  }	  
+		}
+	}
+
 	endSession(sessionId) {
 		const session = this._sessions.get(sessionId);
 
 		if (!session || session.ended) { return; }
 		session.ended = true;
 
-		var children = document.body.children;
-		for (var i = 0; i < children.length; i++) {
-			var child = children[i];
-			if (child != this._wrapperDiv) {
-				if (child._displayChanged) {
-					child.style.display = child._displayWas
-					child._displayWas = ""
-					child._displayChanged = false
-				}
-			}
-		}
 		if (this._activeSession === session) {
-
 			if (session.baseLayer !== null) {
+				var children = document.body.children;
+				for (var i = 0; i < children.length; i++) {
+					var child = children[i];
+					if (child != this._wrapperDiv) {
+						if (child._displayChanged) {
+							child.style.display = child._displayWas;
+							child._displayWas = "";
+							child._displayChanged = false;
+						}
+					}
+				}
+		
 				const canvas = session.baseLayer.context.canvas;
 				this._wrapperDiv.removeChild(canvas);
 
@@ -324,15 +338,17 @@ export default class ARKitDevice extends XRDevice {
 				} else {
 					session.canvasNextSibling.before(canvas)
 				}
-				session.canvasParent = null
-				session.canvasNextSibling = null
+				session.canvasParent = null;
+				session.canvasNextSibling = null;
 
-				canvas.style.width = session.canvasWidth
-				canvas.style.height = session.canvasHeight
-				canvas.style.display = session.canvasDisplay
-				canvas.style.backgroundColor = session.canvasBackground
+				canvas.style.width = session.canvasWidth;
+				canvas.style.height = session.canvasHeight;
+				canvas.style.display = session.canvasDisplay;
+				canvas.style.backgroundColor = session.canvasBackground;
+
+				document.body.style.backgroundColor = session.bodyBackground;
 			}
-
+	
 			this._wrapperDiv.style.display = "none";
 
 			this._activeSession = null;
@@ -499,5 +515,8 @@ class ARWatcher extends ARKitWatcher {
 	handleOnError(...args) {
 		console.error('ARKit error', ...args);
 	}
-}
 
+	handleUserStoppedAR(event) {
+		this._arKitDevice.userEndedSession()
+	}
+}

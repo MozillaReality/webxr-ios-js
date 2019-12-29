@@ -49,7 +49,7 @@ export default class ARKitWrapper extends EventTarget {
 		this._rAF_callbacks = [];
 		this._rAF_currentCallbacks = [];
 		this._frameHandle = 1;
-		
+
 		/**
 		 * session state, returned from session and updated when it changes.
 		 * 
@@ -181,6 +181,19 @@ export default class ARKitWrapper extends EventTarget {
 		window['userGrantedWorldSensingData'] = (detail) => {
 			this._sessionWorldAccess |= detail.granted;
 		};
+
+		window['userStoppedAR'] = (detail) => {
+			this._handleStopped();
+			
+			try {
+				this.dispatchEvent(
+					ARKitWrapper.USER_STOPPED_AR,
+					new CustomEvent(ARKitWrapper.USER_STOPPED_AR, { })
+				);
+			} catch(e) {
+				console.error('USER_STOPPED_AR event error', e);
+			}
+		}
 	}
 
 	static GetOrCreate(options=null) {
@@ -1101,16 +1114,19 @@ export default class ARKitWrapper extends EventTarget {
 
 			console.log('----STOP');
 			this._stop().then((results) => {
-				this._isWatching = false;
-
-				// if there's a rAF waiting, schedule it
-				if (this._rAF_callbacks.length > 0) {
-					this._do_rAF();
-				}
-
+				this._handleStopped();
 				resolve(results);
 			});
 		});
+	}
+
+	_handleStopped() {
+		this._isWatching = false;
+
+		// if there's a rAF waiting, schedule it
+		if (this._rAF_callbacks.length > 0) {
+			this._do_rAF();
+		}
 	}
 
 	hitTest(x, y, types=ARKitWrapper.HIT_TEST_TYPE_ALL) {
@@ -1342,6 +1358,7 @@ ARKitWrapper.INTERRUPTION_ENDED_EVENT = 'arkit-interruption-ended';
 ARKitWrapper.SHOW_DEBUG_EVENT = 'arkit-show-debug';
 ARKitWrapper.WINDOW_RESIZE_EVENT = 'arkit-window-resize';
 ARKitWrapper.ON_ERROR = 'on-error';
+ARKitWrapper.USER_STOPPED_AR = 'user-stopped-ar';
 ARKitWrapper.AR_TRACKING_CHANGED = 'ar_tracking_changed';
 ARKitWrapper.COMPUTER_VISION_DATA = 'cv_data';
 ARKitWrapper.USER_GRANTED_COMPUTER_VISION_DATA = 'user-granted-cv-data';

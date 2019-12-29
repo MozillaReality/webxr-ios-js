@@ -23,6 +23,7 @@ export default class ARKitWatcher {
 		this._arKitWrapper.addEventListener(ARKitWrapper.ON_ERROR, this.handleOnError.bind(this));
 		this._arKitWrapper.addEventListener(ARKitWrapper.AR_TRACKING_CHANGED, this.handleArTrackingChanged.bind(this));
 		this._arKitWrapper.addEventListener(ARKitWrapper.COMPUTER_VISION_DATA, this.handleComputerVisionData.bind(this));
+		this._arKitWrapper.addEventListener(ARKitWrapper.USER_STOPPED_AR, this.handleUserStoppedAR.bind(this));
 	}
 
 	// Ancestor classes can override these functions to handle events
@@ -32,4 +33,5 @@ export default class ARKitWatcher {
 	handleOnError() {}
 	handleArTrackingChanged() {}
 	handleComputerVisionData() {}
+	handleUserStoppedAR() {}
 }
