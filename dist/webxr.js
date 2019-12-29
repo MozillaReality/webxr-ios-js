@@ -2975,8 +2975,9 @@ class ARKitWrapper extends EventTarget {
 		this._waitingForSessionStart = false;
 		this._isInitialized = false;
 		this._rawARData = null;
-		this._rAF_callback = null;
-		this._rAF_callbackParams = [];
+		this._rAF_callbacks = [];
+		this._rAF_currentCallbacks = [];
+		this._frameHandle = 1;
 		this._requestedPermissions = {
 			cameraAccess: false,
 			worldAccess: false
@@ -3259,7 +3260,7 @@ class ARKitWrapper extends EventTarget {
 		} catch(e) {
 			console.error('WATCH_EVENT event error', e);
 		}
-		if (this._rAF_callback) {
+		if (this._rAF_callbacks.length > 0) {
 			this._do_rAF();
 		}
 		this._dataBeforeNext++;
@@ -3317,21 +3318,27 @@ class ARKitWrapper extends EventTarget {
 		}
 	}
 	_do_rAF() {
-		if (this._rAF_callback) {
-			const _callback = this._rAF_callback;
-			const _params = this._rAF_callbackParams;
-			this._rAF_callback = null;
-			this._rAF_callbackParams = [];
-			return window.requestAnimationFrame((...params) => {
-					this.startingRender();
-					try {
-						_callback(..._params);
-					} catch(e) {
-						console.error('application callback error: ', e);
+		const callbacks = this._rAF_callbacks;
+		this._rAF_currentCallbacks = this._rAF_currentCallbacks.concat(this._rAF_callbacks);
+		this._rAF_callbacks = [];
+		return window.requestAnimationFrame((...params) => {
+			this.startingRender();
+			for (let i = 0; i < callbacks.length; i++) {
+				let queuedCallbacks = this._rAF_currentCallbacks;
+				let index = queuedCallbacks.findIndex(d => d && d.handle === callbacks[i].handle);
+				if (index > -1) {
+					queuedCallbacks.splice(index, 1);
+				}
+				try {
+					if (!callbacks[i].cancelled && typeof callbacks[i].callback === 'function') {
+						callbacks[i].callback(...callbacks[i].params);
 					}
-					this.finishedRender();
-			});
-		}
+				} catch(err) {
+					console.error(err);
+				}
+			}
+			this.finishedRender();
+		});
 	}
 	_createOrUpdateAnchorObject(element) {
 		if (element.plane_center) {
@@ -3492,10 +3499,31 @@ class ARKitWrapper extends EventTarget {
 		});
 	}
 	requestAnimationFrame(callback, ...params) {
-		this._rAF_callback = callback;
-		this._rAF_callbackParams = params;
-		if (this._dataBeforeNext > 0) {
-				this._do_rAF();
+    	const handle = ++this._frameHandle;
+	    this._rAF_callbacks.push({
+			  handle,
+			  callback,
+			  params,
+      		  cancelled: false
+		});
+		if (!this._isWatching || this._dataBeforeNext > 0) {
+			this._do_rAF();
+		}
+		return handle;
+	}
+	cancelAnimationFrame(handle) {
+		let callbacks = this._rAF_callbacks;
+		let index = callbacks.findIndex(d => d && d.handle === handle);
+		if (index > -1) {
+			callbacks[index].cancelled = true;
+			callbacks.splice(index, 1);
+		}
+		callbacks = this._rAF_currentCallbacks;
+		if (callbacks) {
+			index = callbacks.findIndex(d => d && d.handle === handle);
+			if (index > -1) {
+				callbacks[index].cancelled = true;
+			}
 		}
 	}
 	startingRender() {
@@ -3567,6 +3595,9 @@ class ARKitWrapper extends EventTarget {
 			console.log('----STOP');
 			this._stop().then((results) => {
 				this._isWatching = false;
+				if (this._rAF_callbacks.length > 0) {
+					this._do_rAF();
+				}
 				resolve(results);
 			});
 		});
@@ -3836,6 +3867,7 @@ class ARKitDevice extends XRDevice {
 		this._headModelMatrix = create$5();
 		this._headModelMatrixInverse = create$5();
 		this._projectionMatrix = create$5();
+		this._deviceProjectionMatrix = create$5();
 		this._eyeLevelMatrix = identity$3(create$5());
 		this._stageMatrix = identity$3(create$5());
 		this._stageMatrix[13] = -1.3;
@@ -3858,8 +3890,8 @@ class ARKitDevice extends XRDevice {
 			const styleEl = document.createElement('style');
 			document.head.appendChild(styleEl);
 			const styleSheet = styleEl.sheet;
-			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
-			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; display: none; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { background-color: transparent; position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
 			styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
 		};
 		if (document.body) {
@@ -3875,7 +3907,7 @@ class ARKitDevice extends XRDevice {
 		);
 	}
 	setProjectionMatrix(matrix) {
-		copy$5(this._projectionMatrix, matrix);
+		copy$5(this._deviceProjectionMatrix, matrix);
 	}
 	setBaseViewMatrix(matrix) {
 		copy$5(this._headModelMatrixInverse, matrix);
@@ -3976,31 +4008,102 @@ class ARKitDevice extends XRDevice {
 	onBaseLayerSet(sessionId, layer) {
 	    const session = this._sessions.get(sessionId);
     	const canvas = layer.context.canvas;
+		const oldLayer = session.baseLayer;
 		session.baseLayer = layer;
 		if (!session.immersive) {
 			return;
 		}
-		this._wrapperDiv.appendChild(canvas);
+		if (oldLayer !== null) {
+			const oldCanvas = oldLayer.context.canvas;
+			this._wrapperDiv.removeChild(oldCanvas);
+			oldCanvas.style.width = session.canvasWidth;
+			oldCanvas.style.height = session.canvasHeight;
+			oldCanvas.style.display = session.canvasDisplay;
+			oldCanvas.style.backgroundColor = session.canvasBackground;
+		}
+		session.bodyBackground = document.body.style.backgroundColor;
+		document.body.style.backgroundColor = "transparent";
+		var children = document.body.children;
+		for (var i = 0; i < children.length; i++) {
+			var child = children[i];
+			if (child != this._wrapperDiv && child != canvas) {
+				var display = child.style.display;
+				child._displayChanged = true;
+				child._displayWas = display;
+				child.style.display = "none";
+			}
+		}
+		session.canvasParent = canvas.parentNode;
+		session.canvasNextSibling = canvas.nextSibling;
+			session.canvasDisplay = canvas.style.display;
+		canvas.style.display = "block";
+		session.canvasBackground = canvas.style.backgroundColor;
+		canvas.style.backgroundColor = "transparent";
+		session.canvasWidth = canvas.style.width;
+		session.canvasHeight = canvas.style.height;
 		canvas.style.width = "100%";
 		canvas.style.height = "100%";
+		this._wrapperDiv.appendChild(canvas);
+		this._wrapperDiv.style.display = "block";
+	}
+	endSession(sessionId) {
+		const session = this._sessions.get(sessionId);
+		if (!session || session.ended) { return; }
+		session.ended = true;
+		var children = document.body.children;
+		for (var i = 0; i < children.length; i++) {
+			var child = children[i];
+			if (child != this._wrapperDiv) {
+				if (child._displayChanged) {
+					child.style.display = child._displayWas;
+					child._displayWas = "";
+					child._displayChanged = false;
+				}
+			}
+		}
+		if (this._activeSession === session) {
+			if (session.baseLayer !== null) {
+				const canvas = session.baseLayer.context.canvas;
+				this._wrapperDiv.removeChild(canvas);
+				if (!session.canvasNextSibling) {
+					session.canvasParent.appendChild(canvas);
+				} else {
+					session.canvasNextSibling.before(canvas);
+				}
+				session.canvasParent = null;
+				session.canvasNextSibling = null;
+				canvas.style.width = session.canvasWidth;
+				canvas.style.height = session.canvasHeight;
+				canvas.style.display = session.canvasDisplay;
+				canvas.style.backgroundColor = session.canvasBackground;
+			}
+			this._wrapperDiv.style.display = "none";
+			this._activeSession = null;
+			identity$3(this._headModelMatrix);
+			this._arKitWrapper.stop();
+		}
+		this._frameSession = null;
 	}
 	requestAnimationFrame(callback, ...params) {
-		if (this._activeSession) {
 			return this._arKitWrapper.requestAnimationFrame(callback, params);
-		} else {
-			return window.requestAnimationFrame(callback, params);
-		}
 	}
 	cancelAnimationFrame(handle) {
-		return window.cancelAnimationFrame(handle);
+		return this._arKitWrapper.cancelAnimationFrame(handle);
 	}
 	onFrameStart(sessionId, renderState) {
 		const session = this._sessions.get(sessionId);
 		this._frameSession = session;
-		if (!session.immersive && session.baseLayer) {
-			const canvas = session.baseLayer.context.canvas;
-			perspective$1(this._projectionMatrix, renderState.inlineVerticalFieldOfView,
-				canvas.width/canvas.height, renderState.depthNear, renderState.depthFar);
+		if (session.immersive) {
+			copy$5(this._projectionMatrix, this._deviceProjectionMatrix);
+		} else {
+			if (session.baseLayer) {
+				const canvas = session.baseLayer.context.canvas;
+				perspective$1(this._projectionMatrix,
+					renderState.inlineVerticalFieldOfView,
+					canvas.width/canvas.height,
+					renderState.depthNear,
+					renderState.depthFar);
+			}
 		}
 	}
 	onFrameEnd(sessionId) {
@@ -4036,20 +4139,6 @@ class ARKitDevice extends XRDevice {
 					return;
 			}
 		});
-	}
-	endSession(sessionId) {
-		const session = this._sessions.get(sessionId);
-		if (!session || session.ended) { return; }
-		session.ended = true;
-		if (this._activeSession === session) {
-			this._activeSession = null;
-			identity$3(this._headModelMatrix);
-			this._arKitWrapper.stop();
-		}
-		this._frameSession = null;
-		if (session.baseLayer !== null) {
-			this._wrapperDiv.removeChild(session.baseLayer.context.canvas);
-		}
 	}
 	getViewport(sessionId, eye, layer, target) {
 		const { width, height } = layer.context.canvas;
@@ -4180,13 +4269,13 @@ const installHitTestingExtension = () => {
 	XRSession$1.prototype._original_XRSession_rAF = XRSession$1.prototype.requestAnimationFrame;
 	let _hitList = [];
 	XRSession$1.prototype.requestAnimationFrame = function (callback) {
-		this._original_XRSession_rAF((rightNow, frame) => {
+		return this._original_XRSession_rAF((rightNow, frame) => {
 			for (const hit of _hitList) {
 				hit(rightNow, frame);
 			}
 			_hitList.length = 0;
 			callback(rightNow,frame);
-		});
+		})
 	};
 	XRSession$1.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
 		if (!this[PRIVATE$15].immersive) {

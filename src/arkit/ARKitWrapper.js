@@ -46,9 +46,10 @@ export default class ARKitWrapper extends EventTarget {
 		this._isInitialized = false;
 		this._rawARData = null;
 
-		this._rAF_callback = null;
-		this._rAF_callbackParams = [];
-
+		this._rAF_callbacks = [];
+		this._rAF_currentCallbacks = [];
+		this._frameHandle = 1;
+		
 		/**
 		 * session state, returned from session and updated when it changes.
 		 * 
@@ -578,7 +579,7 @@ export default class ARKitWrapper extends EventTarget {
 		}
 
 		// if there's a rAF waiting, schedule it
-		if (this._rAF_callback) {
+		if (this._rAF_callbacks.length > 0) {
 			this._do_rAF();
 		}
 		this._dataBeforeNext++; 
@@ -712,31 +713,36 @@ export default class ARKitWrapper extends EventTarget {
 	}
 
 	_do_rAF() {
-		if (this._rAF_callback) {
-			const _callback = this._rAF_callback;
-			const _params = this._rAF_callbackParams;
+		const callbacks = this._rAF_callbacks;
 
-			this._rAF_callback = null;
-			this._rAF_callbackParams = [];
+		// could have multiple queued callback rAFs, if there are multiple sessions
+		// calling rAF (e.g., some # of inline sessions plus 0 or 1 AR sessions).
+		// so, need to have a record of all callbacks in all rAFs
+		this._rAF_currentCallbacks = this._rAF_currentCallbacks.concat(this._rAF_callbacks)
+		this._rAF_callbacks = []
 
-			// add a tiny delay, which will hopefully help with the rendering 
-			// race conditions caused by SceneKit on fast devices, until we move to Metal
-			// let sleep = function (time) {
-			// 	return new Promise((resolve) => setTimeout(resolve, time));
-			// }
-			
-			return window.requestAnimationFrame((...params) => {
-				// sleep(1).then(() => {
-					this.startingRender();
-					try {
-						_callback(..._params);
-					} catch(e) {
-						console.error('application callback error: ', e);
+		return window.requestAnimationFrame((...params) => {
+			this.startingRender();
+			for (let i = 0; i < callbacks.length; i++) {
+
+				// when we actually execute a callback, we first remove it from the 
+				// queued callback list
+				let queuedCallbacks = this._rAF_currentCallbacks
+				let index = queuedCallbacks.findIndex(d => d && d.handle === callbacks[i].handle);
+				if (index > -1) {
+					queuedCallbacks.splice(index, 1);
+				}
+
+				try {
+					if (!callbacks[i].cancelled && typeof callbacks[i].callback === 'function') {
+						callbacks[i].callback(...callbacks[i].params);
 					}
-					this.finishedRender();
-				// })
-			});
-		}
+				} catch(err) {
+					console.error(err);
+				}
+			}
+			this.finishedRender();
+		});
 	}
 
 	_createOrUpdateAnchorObject(element) {
@@ -947,13 +953,47 @@ export default class ARKitWrapper extends EventTarget {
 	// requestAnimationFrame. callback function is fired when receiving data from ARKit
 
 	requestAnimationFrame(callback, ...params) {
-		this._rAF_callback = callback;
-		this._rAF_callbackParams = params;
+		//this._rAF_callback = callback;
+		//this._rAF_callbackParams = params;
 
-		if (this._dataBeforeNext > 0) {
-				this._do_rAF();	
+	    // Add callback to the queue and return its handle
+    	const handle = ++this._frameHandle;
+	    this._rAF_callbacks.push({
+			  handle,
+			  callback,
+			  params,
+      		  cancelled: false
+		});
+		
+		if (!this._isWatching || this._dataBeforeNext > 0) {
+			this._do_rAF();	
 		}
-		// if there's data waiting, skip it because we're behind 
+		return handle;
+	}
+
+	/**
+	 * @param {number} handle
+	 */
+	cancelAnimationFrame(handle) {
+		// Remove the callback with that handle from the queue
+		let callbacks = this._rAF_callbacks;
+		let index = callbacks.findIndex(d => d && d.handle === handle);
+		if (index > -1) {
+			callbacks[index].cancelled = true;
+			callbacks.splice(index, 1);
+		}
+
+		// If cancelAnimationFrame is called from within a frame callback,
+		// or after a set of callbacks have been queues, also check
+		// the in-process callbacks for the current frame:
+		callbacks = this._rAF_currentCallbacks;
+		if (callbacks) {
+			index = callbacks.findIndex(d => d && d.handle === handle);
+			if (index > -1) {
+				callbacks[index].cancelled = true;
+				// Rely on cancelled flag only; don't mutate this array while it's being iterated
+			}
+		}
 	}
 
 	startingRender() {
@@ -1062,6 +1102,12 @@ export default class ARKitWrapper extends EventTarget {
 			console.log('----STOP');
 			this._stop().then((results) => {
 				this._isWatching = false;
+
+				// if there's a rAF waiting, schedule it
+				if (this._rAF_callbacks.length > 0) {
+					this._do_rAF();
+				}
+
 				resolve(results);
 			});
 		});

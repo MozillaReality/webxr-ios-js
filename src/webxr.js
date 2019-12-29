@@ -150,7 +150,7 @@ const installHitTestingExtension = () => {
 	XRSession.prototype._original_XRSession_rAF = XRSession.prototype.requestAnimationFrame;
 	let _hitList = [];
 	XRSession.prototype.requestAnimationFrame = function (callback) {
-		this._original_XRSession_rAF((rightNow, frame) => {
+		return this._original_XRSession_rAF((rightNow, frame) => {
 			for (const hit of _hitList) {
 				hit(rightNow, frame);
 			}

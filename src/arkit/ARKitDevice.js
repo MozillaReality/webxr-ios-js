@@ -41,6 +41,7 @@ export default class ARKitDevice extends XRDevice {
 		this._headModelMatrixInverse = mat4.create();
 
 		this._projectionMatrix = mat4.create();
+		this._deviceProjectionMatrix = mat4.create();
 		this._eyeLevelMatrix = mat4.identity(mat4.create());
 		this._stageMatrix = mat4.identity(mat4.create());
 		this._stageMatrix[13] = -1.3;
@@ -68,8 +69,8 @@ export default class ARKitDevice extends XRDevice {
 			const styleEl = document.createElement('style');
 			document.head.appendChild(styleEl);
 			const styleSheet = styleEl.sheet;
-			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; }', 0);
-			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper { z-index: -1; display: none; }', 0);
+			styleSheet.insertRule('.arkit-device-wrapper, .xr-canvas { background-color: transparent; position: absolute; top: 0; left: 0; bottom: 0; right: 0; }', 0);
 			styleSheet.insertRule('.arkit-device-wrapper, .arkit-device-wrapper canvas { width: 100%; height: 100%; padding: 0; margin: 0; -webkit-user-select: none; user-select: none; }', 0);
 		};
 
@@ -91,7 +92,7 @@ export default class ARKitDevice extends XRDevice {
 	// set methods called by ARWatcher when the device data is sent from Apple ARKit
 
 	setProjectionMatrix(matrix) {
-		mat4.copy(this._projectionMatrix, matrix);
+		mat4.copy(this._deviceProjectionMatrix, matrix);
 	}
 
 	setBaseViewMatrix(matrix) {
@@ -219,6 +220,7 @@ export default class ARKitDevice extends XRDevice {
 
 		const watchResult = await this._arKitWrapper.watch(ARKitOptions).then((results) => {
 			const session = new Session(mode, enabledFeatures);
+
 			this._sessions.set(session.id, session);
 			this._activeSession = session;
 
@@ -234,6 +236,7 @@ export default class ARKitDevice extends XRDevice {
 	onBaseLayerSet(sessionId, layer) {
 	    const session = this._sessions.get(sessionId);
     	const canvas = layer.context.canvas;
+		const oldLayer = session.baseLayer;
 
 		session.baseLayer = layer; // XRWebGLLayer
 
@@ -241,24 +244,115 @@ export default class ARKitDevice extends XRDevice {
 			return;
 		}
 
-		this._wrapperDiv.appendChild(canvas);
+		if (oldLayer !== null) {
+			const oldCanvas = oldLayer.context.canvas;
+			this._wrapperDiv.removeChild(oldCanvas);
 
+			oldCanvas.style.width = session.canvasWidth
+			oldCanvas.style.height = session.canvasHeight
+			oldCanvas.style.display = session.canvasDisplay
+			oldCanvas.style.backgroundColor = session.canvasBackground
+		}
+
+		session.bodyBackground = document.body.style.backgroundColor;
+		document.body.style.backgroundColor = "transparent";
+
+		var children = document.body.children;
+		for (var i = 0; i < children.length; i++) {
+			var child = children[i];
+			if (child != this._wrapperDiv && child != canvas) {
+				var display = child.style.display;
+				child._displayChanged = true;
+				child._displayWas = display
+				child.style.display = "none"
+			}
+		}
+
+		session.canvasParent = canvas.parentNode
+		session.canvasNextSibling = canvas.nextSibling
+
+		// if (canvas._displayChanged) {
+		// 	session.canvasDisplay = canvas._displayWas
+		// 	canvas._displayWas = ""
+		// 	canvas._displayChanged = false;
+		// } else {
+			session.canvasDisplay = canvas.style.display
+		// }
+		canvas.style.display = "block"
+		session.canvasBackground = canvas.style.backgroundColor
+		canvas.style.backgroundColor = "transparent"
+
+		session.canvasWidth = canvas.style.width
+		session.canvasHeight = canvas.style.height
 		canvas.style.width = "100%";
 		canvas.style.height = "100%";
+
+		this._wrapperDiv.appendChild(canvas);
+		this._wrapperDiv.style.display = "block";
+
+
 		// layer.width = layer.context.canvas.width = this._wrapperDiv.clientWidth * window.devicePixelRatio;
 		// layer.height = layer.context.canvas.height = this._wrapperDiv.clientHeight * window.devicePixelRatio;
 	}
 
-	requestAnimationFrame(callback, ...params) {
-		if (this._activeSession) {
-			return this._arKitWrapper.requestAnimationFrame(callback, params);
-		} else {
-			return window.requestAnimationFrame(callback, params);
+	endSession(sessionId) {
+		const session = this._sessions.get(sessionId);
+
+		if (!session || session.ended) { return; }
+		session.ended = true;
+
+		var children = document.body.children;
+		for (var i = 0; i < children.length; i++) {
+			var child = children[i];
+			if (child != this._wrapperDiv) {
+				if (child._displayChanged) {
+					child.style.display = child._displayWas
+					child._displayWas = ""
+					child._displayChanged = false
+				}
+			}
 		}
+		if (this._activeSession === session) {
+
+			if (session.baseLayer !== null) {
+				const canvas = session.baseLayer.context.canvas;
+				this._wrapperDiv.removeChild(canvas);
+
+				if (!session.canvasNextSibling) {
+					// was at the end
+					session.canvasParent.appendChild(canvas)
+				} else {
+					session.canvasNextSibling.before(canvas)
+				}
+				session.canvasParent = null
+				session.canvasNextSibling = null
+
+				canvas.style.width = session.canvasWidth
+				canvas.style.height = session.canvasHeight
+				canvas.style.display = session.canvasDisplay
+				canvas.style.backgroundColor = session.canvasBackground
+			}
+
+			this._wrapperDiv.style.display = "none";
+
+			this._activeSession = null;
+			mat4.identity(this._headModelMatrix);
+			this._arKitWrapper.stop();
+		}
+		this._frameSession = null;
+
+	}
+
+	requestAnimationFrame(callback, ...params) {
+		// if (this._activeSession) {
+			return this._arKitWrapper.requestAnimationFrame(callback, params);
+		// } else {
+		// 	return window.requestAnimationFrame(callback, params);
+		// }
 	}
 
 	cancelAnimationFrame(handle) {
-		return window.cancelAnimationFrame(handle);
+		return this._arKitWrapper.cancelAnimationFrame(handle);
 	}
 
 	onFrameStart(sessionId, renderState) {
@@ -268,11 +362,18 @@ export default class ARKitDevice extends XRDevice {
 
 		// If the session is inline make sure the projection matrix matches the 
 		// aspect ratio of the underlying WebGL canvas.
-		if (!session.immersive && session.baseLayer) {
-			const canvas = session.baseLayer.context.canvas;
-			// Update the projection matrix.
-			mat4.perspective(this._projectionMatrix, renderState.inlineVerticalFieldOfView,
-				canvas.width/canvas.height, renderState.depthNear, renderState.depthFar);
+		if (session.immersive) {
+			mat4.copy(this._projectionMatrix, this._deviceProjectionMatrix);
+		} else {
+			if (session.baseLayer) {
+				const canvas = session.baseLayer.context.canvas;
+				// Update the projection matrix.
+				mat4.perspective(this._projectionMatrix, 	
+					renderState.inlineVerticalFieldOfView, 
+					canvas.width/canvas.height, 
+					renderState.depthNear, 
+					renderState.depthFar);
+			}
 		}
 	}
 
@@ -318,24 +419,6 @@ export default class ARKitDevice extends XRDevice {
 					return;
 			}
 		});
-	}
-
-	endSession(sessionId) {
-		const session = this._sessions.get(sessionId);
-
-		if (!session || session.ended) { return; }
-		session.ended = true;
-
-		if (this._activeSession === session) {
-			this._activeSession = null;
-			mat4.identity(this._headModelMatrix);
-			this._arKitWrapper.stop();
-		}
-		this._frameSession = null;
-
-		if (session.baseLayer !== null) {
-			this._wrapperDiv.removeChild(session.baseLayer.context.canvas);
-		}
 	}
 
 	getViewport(sessionId, eye, layer, target) {
