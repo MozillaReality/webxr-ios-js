@@ -21,7 +21,6 @@
 <body>
     <div id="description">
         <h2>ARKit face tracking Example</h2>
-    	<h5>(click to dismiss)</h5>
     	<p>This detects and tracks your face using ARKit and places a 3D  model on it.
         (Glasses model by <a href="https://sketchfab.com/models/5c78f100eea749c895d69fe2ed728197#">person-x</a>)</p>
     </div>
@@ -38,7 +37,7 @@
 	let viewerReferenceSpace = null;
 	let engine = null;
 
-        const meshMap = new Map();
+    const meshMap = new Map();
 
 	// temporary working variables
 	const workingMatrix = mat4.create();
@@ -50,13 +49,13 @@
 	let ambientLight = null;
 	let directionalLight = null;
 
-        // add dat.GUI to the left HUD.  We hid it in stereo viewing, so we don't need to
-        // figure out how to duplicate it.
+	// add dat.GUI to the left HUD.  We hid it in stereo viewing, so we don't need to
+	// figure out how to duplicate it.
 	const params = {
 		face: 'occlusion',
 		ducky: false,
 		glasses: true
-        };
+	};
 
 	const gui = new dat.GUI({autoPlace: false});
 
@@ -65,6 +64,8 @@
 	gui.add(params, 'glasses');
 	gui.domElement.id = 'gui';
 	gui.open();
+
+	document.body.appendChild(gui.domElement);
 
 	let duckyCreated = false;
 	let glassesCreated = false;
@@ -106,8 +107,8 @@
 		}
 	);
 
-        // Called once per frame, before render, to give the app a chance to update this.scene
-        const updateScene = frame => {
+	// Called once per frame, before render, to give the app a chance to update this.scene
+	const updateScene = frame => {
 		frame.getGlobalLightEstimate().then(lightProbe => {
 			const ambientIntensity = lightProbe.indirectIrradiance; // @TODO: Fix me
 			ambientLight.intensity = ambientIntensity;
@@ -168,7 +169,7 @@
 				}
 			});
 		}
-        };
+	};
 
 	const handleRemoveNode = object => {
 		object.geometry.dispose();
@@ -275,11 +276,6 @@
 		});
 	};
 
-        document.getElementById('description').addEventListener('touchstart', event => {
-		event.target.style.display = 'none';
-		event.stopPropagation();
-	}, {capture: true});
-
 	document.getElementById('go-button').addEventListener('click', event => {
 		if (!session) {
 			navigator.xr.isSessionSupported('immersive-ar').then(supported => {
@@ -292,28 +288,24 @@
 						console.error('Session setup error', err);
 					});
 					document.getElementById('go-button').innerText = 'End';
-					document.getElementById('go-button').style.display = 'none';
-					document.body.appendChild(gui.domElement);
 				} else {
 					throw new Error('No immersive-ar support');
 				}
 			});
 		} else {
 			session.end();
-			session = null;
-			document.getElementById('description').style.display = 'block';
-			document.getElementById('go-button').style.display = 'block';
-			document.getElementById('go-button').innerText = 'Go';
-			document.body.removeChild(gui.domElement);
 		}
 	}, true);
 
-        document.getElementById('go-button').addEventListener('touchstart', event => {
-		event.stopPropagation();
-	}, true)
+	function onSessionEnded(event) {
+				session = null;
+				document.getElementById('go-button').innerText = 'Go';
+	        }
 
 	const handleSessionStarted = async xrSession => {
 		session = xrSession;
+
+		session.addEventListener('end', onSessionEnded);
 
 		xrSession.updateWorldSensingState({
 			meshDetectionState: {

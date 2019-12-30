@@ -13,7 +13,6 @@
     <body>
         <div id="description">
             <h2>Show World Knowledge</h2>
-            <h5>(click to dismiss)</h5>
             <p>Render the anchors, including planes and face geometry, detected by the platform.</p>
         </div>
         <button type=button id=go-button>Go</button>
@@ -275,24 +274,20 @@
 							console.error('Session setup error', err);
 						});
 						document.getElementById('go-button').innerText = 'End';
-						document.getElementById('go-button').style.display = 'none';
 					} else {
 						throw new Error('No immersive-ar support');
 					}
 				});
 			} else {
 				session.end();
-				session = null;
-				reticleParent.visible = false;   // it starts invisible
-				document.getElementById('description').style.display = 'block';
-				document.getElementById('go-button').style.display = 'block';
-				document.getElementById('go-button').innerText = 'Go';
 			}
 		}, true)
 
-		document.getElementById('go-button').addEventListener('touchstart', event => {
-			event.stopPropagation();
-		}, true);
+		function onSessionEnded(event) {
+			session = null;
+			reticleParent.visible = false;   // it starts invisible
+			document.getElementById('go-button').innerText = 'Go';
+		}
 
 		// handle input events from the XRInputManager
 		const inputManager = new XRInputManager((eventName, details) => {
@@ -320,6 +315,8 @@
 
 		const handleSessionStarted = async xrSession => {
 			session = xrSession
+
+			session.addEventListener('end', onSessionEnded);
 
 			xrSession.updateWorldSensingState({
 				meshDetectionState : {

@@ -20,7 +20,6 @@
 </div>
 <div id="description">
 	<h2>ARKit 1.5 Image Detection Example</h2>
-	<h5>(click to dismiss)</h5>
 	<p>This sample automatically creates and activates a reference image, and places an anchored ducky when it's detected.  Print hubs.png so that it's 20cm wide.</p>
 </div>
 <button type=button id=go-button>Go</button>
@@ -36,10 +35,10 @@
 
 	// import * as WebLayer3D from '../libs/three-web-layer.es5.js'
 
-        let session = null;
+	let session = null;
 	let localReferenceSpace = null;
 	let viewerReferenceSpace = null;
-        let engine = null;
+	let engine = null;
 
 	const meshMap = new Map();
 
@@ -82,7 +81,7 @@
 	stats.domElement.style.cssText = 'position:fixed;top:2%;right:2%;cursor:pointer;opacity:0.9;z-index:10000';
 	document.body.appendChild( stats.dom );
         
-        // Called once per frame, before render, to give the app a chance to update this.scene
+	// Called once per frame, before render, to give the app a chance to update this.scene
 	const updateScene = frame => {
 		stats.update();
 		const hubsImageName = 'hubs';
@@ -98,19 +97,22 @@
 			let hubsImageData = getImageData('hubs-image');
 
 			session.nonStandard_createDetectionImage(hubsImageName, hubsImageData.data, hubsImageData.width, hubsImageData.height, 0.2).then(() => {
-				let resetButton = document.createElement('button');
-				resetButton.setAttribute('class', 'reset-button');
-				resetButton.innerText = 'Reset';
-				document.getElementById('reset').appendChild(resetButton);
-				resetButton.addEventListener('click', ev => {
-					imageActivateDetection = true;
-					//engine.removeAnchoredNode(ducky)
-					if (imageAnchor) {
-						imageAnchor.detach();
-						engine.removeAnchoredNode(ducky);
-						imageAnchor = null;
-					}
-				});
+
+				// TODO:  Can't do any of this until we can put a DOM Overlay in place.
+				//
+				// let resetButton = document.createElement('button');
+				// resetButton.setAttribute('class', 'reset-button');
+				// resetButton.innerText = 'Reset';
+				// document.getElementById('reset').appendChild(resetButton);
+				// resetButton.addEventListener('click', ev => {
+				// 	imageActivateDetection = true;
+				// 	//engine.removeAnchoredNode(ducky)
+				// 	if (imageAnchor) {
+				// 		imageAnchor.detach();
+				// 		engine.removeAnchoredNode(ducky);
+				// 		imageAnchor = null;
+				// 	}
+				// });
 				// ready to go!
 				imageActivateDetection = true;
 			}).catch(error => {
@@ -134,13 +136,13 @@
 				console.error(`error activating ducky detection image: ${error}`);
 			});
 		}
-        }
+	}
 
-        // removing the anchored node is handled by the engine, we just need to update 
-        // the flag saying "there's no image"
-        function _handleRemoveWorldAnchor(event) {
-            imageActivated = false;
-        }
+	// removing the anchored node is handled by the engine, we just need to update 
+	// the flag saying "there's no image"
+	function _handleRemoveWorldAnchor(event) {
+		imageActivated = false;
+	}
 
 	const getImageData = imageID => {
 		const canvas = document.createElement('canvas');
@@ -151,11 +153,6 @@
 		context.drawImage(img, 0, 0);
 		return context.getImageData(0, 0, img.width, img.height);
 	}
-
-	document.getElementById('description').addEventListener('touchstart', event => {
-		event.target.style.display = 'none';
-		event.stopPropagation();
-	}, {capture: true});
 
 	document.getElementById('go-button').addEventListener('click', event => {
 		if (!session) {
@@ -168,27 +165,27 @@
 						console.error('Session setup error', err);
 					});
 					document.getElementById('go-button').innerText = 'End';
-					document.getElementById('go-button').style.display = 'none';
 				} else {
 					throw new Error('No immersive-ar support');
 				}
 			});
 		} else {
 			session.end();
-			session = null;
-			handleSessionEnded();
-			document.getElementById('description').style.display = 'block';
-			document.getElementById('go-button').style.display = 'block';
-			document.getElementById('go-button').innerText = 'Go';
 		}
 	}, true);
 
-	document.getElementById('go-button').addEventListener('touchstart', event => {
-		event.stopPropagation();
-	}, true);
+	function onSessionEnded(event) {
+		session = null;
+		imageDetectionCreationRequested = false;
+		imageActivateDetection = false;
+		imageActivated = false;
+		imageAnchor = null;
+		document.getElementById('go-button').innerText = 'Go';
+	}
 
-        const handleSessionStarted = async xrSession => {
+	const handleSessionStarted = async xrSession => {
 		session = xrSession;
+		session.addEventListener('end', onSessionEnded);
 
 		// Create the context where we will render our 3D scene
 		const canvas = document.createElement('canvas');
@@ -234,7 +231,7 @@
 	}
 
 	// render loop
-        const handleAnimationFrame = (t, frame) => {
+	const handleAnimationFrame = (t, frame) => {
 		if (!session || session.ended) return
 
 		updateScene(frame);

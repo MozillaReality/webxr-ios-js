@@ -28,7 +28,6 @@
 	<body>
 		<div id="description">
 			<h2>Peoples</h2>
-			<h5>(click to dismiss)</h5>
 			<p>Place animated people on surfaces by tapping.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
@@ -229,11 +228,6 @@
 				return mesh;
 			};
 		
-			document.getElementById('description').addEventListener('touchstart', event => {
-				event.target.style.display = 'none' ;
-				event.stopPropagation();
-			}, {capture: true});
-
 			document.getElementById('go-button').addEventListener('click', event => {
 				if (!session) {
 					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
@@ -244,23 +238,20 @@
 									console.error('Session setup error', err);
 								});
 							document.getElementById('go-button').innerText = 'End';
-							document.getElementById('go-button').style.display = 'none';
 						} else {
 							throw new Error('No immersive-ar support');
 						}
 					});
 				} else {
 					session.end();
-					session = null;
-					document.getElementById('description').style.display = 'block';
-					document.getElementById('go-button').style.display = 'block';
 					document.getElementById('go-button').innerText = 'Go';
 				}
 			}, true);
 
-			document.getElementById('go-button').addEventListener('touchstart', event => {
-				event.stopPropagation()
-			}, true);
+			function onSessionEnded(event) {
+				session = null;
+				document.getElementById('go-button').innerText = 'Go';
+	        }
 
 			// handle input events from the XRInputManager
 			const inputManager = new XRInputManager((eventName, details) => {
@@ -298,6 +289,8 @@
 
 			const handleSessionStarted = async xrSession => {
 				session = xrSession
+
+				session.addEventListener('end', onSessionEnded);
 
 				// Create the context where we will render our 3D scene
 				canvas = document.createElement('canvas')

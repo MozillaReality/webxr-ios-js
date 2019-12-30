@@ -14,16 +14,10 @@
 	<body>
 		<div id="description">
 			<h2>Simple AR Example</h2>
-			<h5>(click to dismiss)</h5>
 			<p>This example displays the Utah Teapot positioned in front of the viewer at head height.</p>
 		</div>
 		<button type=button id=go-button>Go</button>
 		<script type=module>
-			document.getElementById('description').addEventListener('touchstart', event => {
-				event.target.style.display = 'none';
-				event.stopPropagation();
-			}, {capture: true});
-
 			// some dependencies and utilities
 			import * as mat4 from '../libs/gl-matrix/mat4.js';
 			import * as vec3 from '../libs/gl-matrix/vec3.js';
@@ -53,22 +47,20 @@
 						}
 					});
 					document.getElementById('go-button').innerText = 'End';
-					document.getElementById('go-button').style.display = 'none';
 				} else {
 					session.end();
-					session = null;
-					document.getElementById('description').style.display = 'block';
-					document.getElementById('go-button').style.display = 'block';
-					document.getElementById('go-button').innerText = 'Go';
 				}
 			}, true);
 
-			document.getElementById('go-button').addEventListener('touchstart', event => {
-				event.stopPropagation();
-			}, true);
+			function onSessionEnded(event) {
+				session = null;
+				document.getElementById('go-button').innerText = 'Go';
+	        }
 
 			const handleSessionStarted = async xrSession => {
 				session = xrSession;
+
+				session.addEventListener('end', onSessionEnded);
 
 				// Create the context where we will render our 3D scene
 				const canvas = document.createElement('canvas');
