@@ -4093,7 +4093,10 @@ class ARKitDevice extends XRDevice {
 				const canvas = session.baseLayer.context.canvas;
 				this._wrapperDiv.removeChild(canvas);
 				if (!session.canvasNextSibling) {
-					session.canvasParent.appendChild(canvas);
+					if (session.canvasParent) {
+						session.canvasParent.appendChild(canvas);
+					} else {
+					}
 				} else {
 					session.canvasNextSibling.before(canvas);
 				}

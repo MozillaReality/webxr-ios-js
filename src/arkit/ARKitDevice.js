@@ -333,8 +333,12 @@ export default class ARKitDevice extends XRDevice {
 				this._wrapperDiv.removeChild(canvas);
 
 				if (!session.canvasNextSibling) {
-					// was at the end
-					session.canvasParent.appendChild(canvas)
+					if (session.canvasParent) {
+						// was at the end
+						session.canvasParent.appendChild(canvas)
+					} else {
+						// it wasn't in the hierarchy at all
+					}
 				} else {
 					session.canvasNextSibling.before(canvas)
 				}
