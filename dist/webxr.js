@@ -3887,7 +3887,7 @@ class ARKitDevice extends XRDevice {
 		this._deviceProjectionMatrix = create$5();
 		this._eyeLevelMatrix = identity$3(create$5());
 		this._stageMatrix = identity$3(create$5());
-		this._stageMatrix[13] = -1.3;
+		this._stageMatrix[13] = 1.3;
 		this._identityMatrix = identity$3(create$5());
 		this._baseFrameSet = false;
 		this._frameOfRefRequestsWaiting = [];
@@ -4161,6 +4161,10 @@ class ARKitDevice extends XRDevice {
 					});
 					return;
 				case 'local-floor':
+					enqueueOrExec(() => {
+						resolve(this._stageMatrix);
+					});
+					return;
 				case 'bounded-floor':
 				case 'unbounded':
 					reject(new Error('not supported ' + type));

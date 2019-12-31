@@ -44,7 +44,7 @@ export default class ARKitDevice extends XRDevice {
 		this._deviceProjectionMatrix = mat4.create();
 		this._eyeLevelMatrix = mat4.identity(mat4.create());
 		this._stageMatrix = mat4.identity(mat4.create());
-		this._stageMatrix[13] = -1.3;
+		this._stageMatrix[13] = 1.3;
 		this._identityMatrix = mat4.identity(mat4.create());
 		this._baseFrameSet = false;
 		this._frameOfRefRequestsWaiting = [];
@@ -423,6 +423,11 @@ export default class ARKitDevice extends XRDevice {
 					});
 					return;
 				case 'local-floor':
+					enqueueOrExec(() => { 
+						resolve(this._stageMatrix);
+					});
+					return;
+
 				case 'bounded-floor':
 
 				// @TODO: Support unbounded reference space.
