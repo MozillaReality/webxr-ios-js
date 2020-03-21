@@ -6,24 +6,32 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
  */
 
-import XRAnchor from './XRAnchor'
-import XRAnchorOffset from './XRAnchorOffset'
-import XRFaceMesh from  './XRFaceMesh'
-import XRHitResult from './XRHitResult'
-import XRImageAnchor from  './XRImageAnchor'
-import XRLightProbe from './XRLightProbe'
-import XRMesh from './XRMesh'
-import XRPlaneMesh from './XRPlaneMesh'
-import XRVideoFrame from './XRVideoFrame'
+import XRAnchor from './XRAnchor';
+import XRAnchorOffset from './XRAnchorOffset';
+import XRFaceMesh from  './XRFaceMesh';
+import XRHitTestResult from './XRHitTestResult';
+import XRHitTestSource from './XRHitTestSource';
+import XRTransientInputHitTestResult from './XRTransientInputHitTestResult';
+import XRTransientInputHitTestSource from './XRTransientInputHitTestSource';
+import XRImageAnchor from  './XRImageAnchor';
+import XRLightProbe from './XRLightProbe';
+import XRMesh from './XRMesh';
+import XRPlaneMesh from './XRPlaneMesh';
+import XRRay from './XRRay';
+import XRVideoFrame from './XRVideoFrame';
 
 export default {
     XRAnchor,
     XRAnchorOffset,
     XRFaceMesh,
-    XRHitResult,
+    XRHitTestResult,
+    XRHitTestSource,
+    XRTransientInputHitTestResult,
+    XRTransientInputHitTestSource,
     XRImageAnchor,
     XRLightProbe,
     XRMesh,
     XRPlaneMesh,
+    XRRay,
     XRVideoFrame
-}
+};
