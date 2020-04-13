@@ -19,7 +19,8 @@ import ARKitDevice from './arkit/ARKitDevice';
 import ARKitWrapper from './arkit/ARKitWrapper';
 
 import XRAnchor from './extensions/XRAnchor';
-import XRHitResult from './extensions/XRHitResult';
+import XRHitTestResult from './extensions/XRHitTestResult';
+import XRHitTestSource from './extensions/XRHitTestSource';
 
 const _workingMatrix = mat4.create();
 const _workingMatrix2 = mat4.create();
@@ -88,6 +89,8 @@ const installAnchorsExtension = () => {
 
 		const workingMatrix1 = mat4.create();
 
+		// @TODO: Replace XRHitResult with XRHitTestResult if needed
+		/*
 		if (value instanceof XRHitResult) {
 			// let tempAnchor = await _arKitWrapper.createAnchorFromHit(value._hit);
 			// value = tempAnchor.modelMatrix
@@ -95,6 +98,7 @@ const installAnchorsExtension = () => {
 			mat4.multiply(workingMatrix1, value._hit.anchor_transform, value._hit.local_transform)
 			value = workingMatrix1
 		} 
+		*/
 		if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				// we assume that the eye-level reference frame (local reference space)
@@ -141,87 +145,32 @@ const installAnchorsExtension = () => {
 const installHitTestingExtension = () => {
 	if (window.XRSession === undefined) { return };
 
-	/**
-	* Need to override the requestAnimationFrame so we can finish up any hit test 
-	* calculations within the rAF.  Since getPose needs to be done in a rAF.
-	* 
-	* TODO: the whole hit Test needs to be redone. 
-	*/
-	XRSession.prototype._original_XRSession_rAF = XRSession.prototype.requestAnimationFrame;
-	let _hitList = [];
-	XRSession.prototype.requestAnimationFrame = function (callback) {
-		return this._original_XRSession_rAF((rightNow, frame) => {
-			for (const hit of _hitList) {
-				hit(rightNow, frame);
-			}
-			_hitList.length = 0;
-			callback(rightNow,frame);
-		})
-	}
-	/**
-	* Note: Following the spec in https://github.com/immersive-web/anchors/blob/master/explainer.md
-	*       There seems being a newer spec https://github.com/immersive-web/hit-test/blob/master/hit-testing-explainer.md
-	*       but it requires a big change and doesn't seemd to be fixed so using the older spec for now.
-	*
-	* Note: In the spec, requestHitTest() takes two arguments - XRRay and XRCoordinateSystem.
-	*       But this requestHitTest() takes three arguments - Float32Array, XRReferenceSpace, and XRFrame
-	*       Because 1. old implementation takes Float32Array instead of XRRay so just following that
-	*       2. No XRCoordinateSyatem in the newest WebXR API and we should use XRReferenceSpace instead
-	*       3. in the newest WebXR API we use XRFrame.getPose() to get the pose of space relative to baseSpace.
-	*       Then adding the third argument frame {XRFrame} here as temporal workaround.
-	*       We should update to follow the spec if the hit test spec is updated.
-	*
-	* @param direction {Float32Array} @TODO: shoud be XRRay? 
-	* @param referenceSpace {XRReferenceSpace}
-	* @param frame {XRFrame}
-	* @return {Promise<FrozenArray<XRHitResult>>}
-	*/
-	XRSession.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
-		// ARKit only handles hit testing from the screen,
-		// so only head model FoR (viewer reference space) is accepted.
-		// Note: XRReferenceSpace doesn't have exposed type attribute now
-		//       so commenting out so far.
-		/*
-		if(referenceSpace.type !== 'head-model'){
-			return Promise.reject('Only head-model hit testing is supported')
+	// Hit test API
+
+	XRSession.prototype.requestHitTestSource = function requestHitTestSource(options = {}) {
+		const source = new XRHitTestSource(this, options);
+		const device = this[XRSESSION_PRIVATE].device;
+		device.addHitTestSource(source);
+		return Promise.resolve(source);
+	};
+
+	XRSession.prototype.requestHitTestSourceForTransientInput = function requestHitTestSourceForTransientInput() {
+		throw new Error('requestHitTestSourceForTransientInput() is not supported yet.');
+	};
+
+	XRFrame.prototype.getHitTestResults = function getHitTestResults(hitTestSource) {
+		const device = this.session[XRSESSION_PRIVATE].device;
+		const transforms = device.getHitTestResults(hitTestSource);
+		const results = [];
+		for (const transform of transforms) {
+			results.push(new XRHitTestResult(this, transform));
 		}
-		*/
-		if (!this[XRSESSION_PRIVATE].immersive) {
-			return Promise.reject(); 
-		}
+		return results;
+	};
 
-		return new Promise((resolve, reject) => {
-			const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
-
-			// Perform the hit test
-			_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
-				if (hits.length === 0) { resolve([]); }
-				// Hit results are in the tracker (aka eye-level) coordinate system (local reference space),
-				// so transform them back to head-model (viewer) since the passed origin and results must be in the same coordinate system
-
-				let localReferenceSpace = this[XRSESSION_PRIVATE]._localSpace;
-				let ts = _arKitWrapper._timestamp;
-
-				// can't evaluate this till the next rAF, because getPose is done
-				// only in a rAF
-				_hitList.push( (rightNow, frame) => {
-					mat4.copy(_workingMatrix, 
-							frame.getPose(referenceSpace,
-											localReferenceSpace).transform.matrix);
-					resolve(hits.map(hit => {
-						mat4.multiply(_workingMatrix2, 
-									_workingMatrix, 
-									hit.world_transform);
-						return new XRHitResult(_workingMatrix2, hit, ts);
-					}));
-				});
-
-			}).catch((...params) => {
-				console.error('Error testing for hits', ...params);
-				reject();
-			});
-		});
-	}
+	XRFrame.prototype.geetTransientInputHitTestResult = function geetTransientInputHitTestResult() {
+		throw new Error('geetTransientInputHitTestResult() is not supported yet.');
+	};
 };
 
 // Real World Geometry
