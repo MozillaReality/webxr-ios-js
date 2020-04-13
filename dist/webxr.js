@@ -128,6 +128,50 @@ let ARRAY_TYPE = (typeof Float32Array !== 'undefined') ? Float32Array : Array;
 
 const degree = Math.PI / 180;
 
+function create() {
+  let out = new ARRAY_TYPE(16);
+  if(ARRAY_TYPE != Float32Array) {
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    out[4] = 0;
+    out[6] = 0;
+    out[7] = 0;
+    out[8] = 0;
+    out[9] = 0;
+    out[11] = 0;
+    out[12] = 0;
+    out[13] = 0;
+    out[14] = 0;
+  }
+  out[0] = 1;
+  out[5] = 1;
+  out[10] = 1;
+  out[15] = 1;
+  return out;
+}
+
+function copy(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  out[4] = a[4];
+  out[5] = a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  out[9] = a[9];
+  out[10] = a[10];
+  out[11] = a[11];
+  out[12] = a[12];
+  out[13] = a[13];
+  out[14] = a[14];
+  out[15] = a[15];
+  return out;
+}
+
+
 function identity(out) {
   out[0] = 1;
   out[1] = 0;
@@ -309,7 +353,13 @@ function create$1() {
   }
   return out;
 }
-
+function clone$1(a) {
+  var out = new ARRAY_TYPE(3);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  return out;
+}
 function length(a) {
   let x = a[0];
   let y = a[1];
@@ -323,6 +373,19 @@ function fromValues$1(x, y, z) {
   out[2] = z;
   return out;
 }
+function copy$1(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  return out;
+}
+
+function add$1(out, a, b) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+  return out;
+}
 
 
 
@@ -331,10 +394,12 @@ function fromValues$1(x, y, z) {
 
 
 
-
-
-
-
+function scale$1(out, a, b) {
+  out[0] = a[0] * b;
+  out[1] = a[1] * b;
+  out[2] = a[2] * b;
+  return out;
+}
 
 
 
@@ -371,11 +436,45 @@ function cross(out, a, b) {
 
 
 
+function transformQuat(out, a, q) {
+    let qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+    let x = a[0], y = a[1], z = a[2];
+    let uvx = qy * z - qz * y,
+        uvy = qz * x - qx * z,
+        uvz = qx * y - qy * x;
+    let uuvx = qy * uvz - qz * uvy,
+        uuvy = qz * uvx - qx * uvz,
+        uuvz = qx * uvy - qy * uvx;
+    let w2 = qw * 2;
+    uvx *= w2;
+    uvy *= w2;
+    uvz *= w2;
+    uuvx *= 2;
+    uuvy *= 2;
+    uuvz *= 2;
+    out[0] = x + uvx + uuvx;
+    out[1] = y + uvy + uuvy;
+    out[2] = z + uvz + uuvz;
+    return out;
+}
 
 
 
-
-
+function angle(a, b) {
+  let tempA = fromValues$1(a[0], a[1], a[2]);
+  let tempB = fromValues$1(b[0], b[1], b[2]);
+  normalize(tempA, tempA);
+  normalize(tempB, tempB);
+  let cosine = dot(tempA, tempB);
+  if(cosine > 1.0) {
+    return 0;
+  }
+  else if(cosine < -1.0) {
+    return Math.PI;
+  } else {
+    return Math.acos(cosine);
+  }
+}
 
 
 
@@ -436,7 +535,14 @@ function create$3() {
   }
   return out;
 }
-
+function clone$3(a) {
+  let out = new ARRAY_TYPE(4);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  return out;
+}
 function fromValues$3(x, y, z, w) {
   let out = new ARRAY_TYPE(4);
   out[0] = x;
@@ -445,7 +551,13 @@ function fromValues$3(x, y, z, w) {
   out[3] = w;
   return out;
 }
-
+function copy$3(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  return out;
+}
 
 
 
@@ -539,7 +651,15 @@ function setAxisAngle(out, axis, rad) {
   return out;
 }
 
-
+function multiply$4(out, a, b) {
+  let ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  let bx = b[0], by = b[1], bz = b[2], bw = b[3];
+  out[0] = ax * bw + aw * bx + ay * bz - az * by;
+  out[1] = ay * bw + aw * by + az * bx - ax * bz;
+  out[2] = az * bw + aw * bz + ax * by - ay * bx;
+  out[3] = aw * bw - ax * bx - ay * by - az * bz;
+  return out;
+}
 
 
 
@@ -572,7 +692,16 @@ function slerp(out, a, b, t) {
   return out;
 }
 
-
+function invert$2(out, a) {
+  let a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+  let dot$$1 = a0*a0 + a1*a1 + a2*a2 + a3*a3;
+  let invDot = dot$$1 ? 1.0/dot$$1 : 0;
+  out[0] = -a0*invDot;
+  out[1] = -a1*invDot;
+  out[2] = -a2*invDot;
+  out[3] = a3*invDot;
+  return out;
+}
 
 function fromMat3(out, m) {
   let fTrace = m[0] + m[4] + m[8];
@@ -601,11 +730,27 @@ function fromMat3(out, m) {
   }
   return out;
 }
+function fromEuler(out, x, y, z) {
+    let halfToRad = 0.5 * Math.PI / 180.0;
+    x *= halfToRad;
+    y *= halfToRad;
+    z *= halfToRad;
+    let sx = Math.sin(x);
+    let cx = Math.cos(x);
+    let sy = Math.sin(y);
+    let cy = Math.cos(y);
+    let sz = Math.sin(z);
+    let cz = Math.cos(z);
+    out[0] = sx * cy * cz - cx * sy * sz;
+    out[1] = cx * sy * cz + sx * cy * sz;
+    out[2] = cx * cy * sz - sx * sy * cz;
+    out[3] = cx * cy * cz + sx * sy * sz;
+    return out;
+}
 
-
-
+const clone$4 = clone$3;
 const fromValues$4 = fromValues$3;
-
+const copy$4 = copy$3;
 
 
 
@@ -1856,13 +2001,91 @@ function multiply$5(out, a, b) {
 
 
 
+function fromTranslation$2(out, v) {
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = 1;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = 1;
+  out[11] = 0;
+  out[12] = v[0];
+  out[13] = v[1];
+  out[14] = v[2];
+  out[15] = 1;
+  return out;
+}
+
+function fromRotation$2(out, rad, axis) {
+  let x = axis[0], y = axis[1], z = axis[2];
+  let len = Math.sqrt(x * x + y * y + z * z);
+  let s, c, t;
+  if (len < EPSILON$1) { return null; }
+  len = 1 / len;
+  x *= len;
+  y *= len;
+  z *= len;
+  s = Math.sin(rad);
+  c = Math.cos(rad);
+  t = 1 - c;
+  out[0] = x * x * t + c;
+  out[1] = y * x * t + z * s;
+  out[2] = z * x * t - y * s;
+  out[3] = 0;
+  out[4] = x * y * t - z * s;
+  out[5] = y * y * t + c;
+  out[6] = z * y * t + x * s;
+  out[7] = 0;
+  out[8] = x * z * t + y * s;
+  out[9] = y * z * t - x * s;
+  out[10] = z * z * t + c;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
 
 
 
-
-
-
-
+function fromRotationTranslation$1(out, q, v) {
+  let x = q[0], y = q[1], z = q[2], w = q[3];
+  let x2 = x + x;
+  let y2 = y + y;
+  let z2 = z + z;
+  let xx = x * x2;
+  let xy = x * y2;
+  let xz = x * z2;
+  let yy = y * y2;
+  let yz = y * z2;
+  let zz = z * z2;
+  let wx = w * x2;
+  let wy = w * y2;
+  let wz = w * z2;
+  out[0] = 1 - (yy + zz);
+  out[1] = xy + wz;
+  out[2] = xz - wy;
+  out[3] = 0;
+  out[4] = xy - wz;
+  out[5] = 1 - (xx + zz);
+  out[6] = yz + wx;
+  out[7] = 0;
+  out[8] = xz + wy;
+  out[9] = yz - wx;
+  out[10] = 1 - (xx + yy);
+  out[11] = 0;
+  out[12] = v[0];
+  out[13] = v[1];
+  out[14] = v[2];
+  out[15] = 1;
+  return out;
+}
 
 function getTranslation$1(out, mat) {
   out[0] = mat[12];
@@ -1982,6 +2205,12 @@ function create$6() {
 
 
 
+function set$6(out, x, y, z) {
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  return out;
+}
 
 
 
@@ -1999,9 +2228,17 @@ function create$6() {
 
 
 
-
-
-
+function dot$3(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+function cross$1(out, a, b) {
+  let ax = a[0], ay = a[1], az = a[2];
+  let bx = b[0], by = b[1], bz = b[2];
+  out[0] = ay * bz - az * by;
+  out[1] = az * bx - ax * bz;
+  out[2] = ax * by - ay * bx;
+  return out;
+}
 
 
 
@@ -2432,42 +2669,22 @@ const blendShapeNames = [
     "noseSneerRight"
 ];
 
-class XRHitResult {
-	constructor(hitMatrix=null, hit=null, ts){
-		this._hit = hit;
-		this._timestamp = ts;
-		this._hitMatrix = clone$5(hitMatrix);
-	}
-	get hitMatrix(){
-		return this._hitMatrix
-	}
-	get timeStamp() { return this._timestamp }
-}
-
-class XRImageAnchor extends XRAnchor {}
-
-const PRIVATE$18 = Symbol('@@webxr-polyfill/XRLightProbe');
-class XRLightProbe {
-	constructor(options = {}){
-		this[PRIVATE$18] = {
-			indirectIrradiance: options.indirectIrradiance
-		};
-	}
-	get indirectIrradiance() {
-		return this[PRIVATE$18].indirectIrradiance;
-	}
-	get primaryLightDirection() {
-		throw new Error('Not implemented');
-	}
-	get primaryLightIntensity() {
-		throw new Error('Not implemented');
-	}
-	get sphericalHarmonicsCoefficients() {
-		throw new Error('Not implemented');
-	}
-	get sphericalHarmonicsOrientation() {
-		throw new Error('Not implemented');
-	}
+const PRIVATE$18 = Symbol('@@webxr-polyfill/XRHitTestResult');
+class XRHitTestResult {
+  constructor(frame, transform) {
+    this[PRIVATE$18] = {
+      frame,
+      transform
+    };
+  }
+  getPose(baseSpace) {
+    const space = new XRSpace();
+    space._baseMatrix = copy$5(create$5(), this[PRIVATE$18].transform.matrix);
+    return this[PRIVATE$18].frame.getPose(space, baseSpace);
+  }
+  get _frame() {
+    return this[PRIVATE$18].frame;
+  }
 }
 
 function create$7() {
@@ -2490,7 +2707,13 @@ function fromValues$7(x, y, z, w) {
   return out;
 }
 
-
+function set$7(out, x, y, z, w) {
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  out[3] = w;
+  return out;
+}
 
 
 
@@ -2554,6 +2777,177 @@ const forEach$3 = (function() {
     return a;
   };
 })();
+
+const PRIVATE$19 = Symbol('@@webxr-polyfill/XRRay');
+class XRRay {
+  constructor(origin, direction) {
+    const _origin = {x: 0, y: 0, z: 0, w: 1};
+    const _direction = {x: 0, y: 0, z: -1, w: 0};
+    if (origin && origin instanceof XRRigidTransform$1) {
+      const transform = origin;
+      const matrix = transform.matrix;
+      const originVec4 = set$7(create$7(), _origin.x, _origin.y, _origin.z, _origin.w);
+      const directionVec4 = set$7(create$7(), _direction.x, _direction.y, _direction.z, _direction.w);
+      transformMat4$3(originVec4, originVec4, matrix);
+      transformMat4$3(directionVec4, directionVec4, matrix);
+      _origin.x = originVec4[0];
+      _origin.y = originVec4[1];
+      _origin.z = originVec4[2];
+      _origin.w = originVec4[3];
+      _directionVec4.x = directionVec4[0];
+      _directionVec4.y = directionVec4[1];
+      _directionVec4.z = directionVec4[2];
+      _directionVec4.w = directionVec4[3];
+    } else {
+      if (origin) {
+        _origin.x = origin.x;
+        _origin.y = origin.y;
+        _origin.z = origin.z;
+        _origin.w = origin.w;
+      }
+      if (direction) {
+        _direction.x = direction.x;
+        _direction.y = direction.y;
+        _direction.z = direction.z;
+        _direction.w = direction.w;
+      }
+    }
+    const length = Math.sqrt(_direction.x * _direction.x +
+      _direction.y * _direction.y + _direction.z * _direction.z) || 1;
+    _direction.x = _direction.x / length;
+    _direction.y = _direction.y / length;
+    _direction.z = _direction.z / length;
+    this[PRIVATE$19] = {
+      origin: new DOMPointReadOnly(_origin.x, _origin.y, _origin.z, _origin.w),
+      direction: new DOMPointReadOnly(_direction.x, _direction.y, _direction.z, _direction.w),
+      matrix: null
+    };
+  }
+  get origin() {
+    return this[PRIVATE$19].origin;
+  }
+  get direction() {
+    return this[PRIVATE$19].direction;
+  }
+  get matrix() {
+    if (this[PRIVATE$19].matrix) {
+      return this[PRIVATE$19].matrix;
+    }
+    const z = set$6(create$6(), 0, 0, -1);
+    const origin = set$6(create$6(),
+      this[PRIVATE$19].origin.x,
+      this[PRIVATE$19].origin.y,
+      this[PRIVATE$19].origin.z
+    );
+    const direction = set$6(create$6(),
+      this[PRIVATE$19].direction.x,
+      this[PRIVATE$19].direction.y,
+      this[PRIVATE$19].direction.z
+    );
+    const axis = cross$1(create$6(), direction, z);
+    const cosAngle = dot$3(direction, z);
+    const rotation = create$5();
+    if (cosAngle > -1 && cosAngle < 1) {
+      fromRotation$2(rotation, Math.acos(cosAngle), axis);
+    } else if (cosAngle === -1) {
+      fromRotation$2(rotation, Math.acos(cosAngle), set$6(create$6(), 1, 0, 0));
+    }
+    const translation = fromTranslation$2(create$5(), origin);
+    const matrix = multiply$5(create$5(), translation, rotation);
+    this[PRIVATE$19].matrix = matrix;
+    return matrix;
+  }
+}
+
+const PRIVATE$20 = Symbol('@@webxr-polyfill/XRHitTestSource');
+class XRHitTestSource {
+  constructor(session, options) {
+    if (!options.space) {
+      throw new Error('XRHitTestSource requires space.');
+    }
+    if (options.space._specialType !== 'viewer') {
+      throw new Error('XRHitTestSource supports only viewer space for now.');
+    }
+    if (options.entityTypes) {
+      for (const entityType of options.entityTypes) {
+        if (entityType !== 'plane') {
+          throw new Error('XRHitTestSource does not support entityType' + entityType + ' yet.');
+        }
+      }
+    }
+    if (options.offsetRay) {
+      if (options.offsetRay.origin.x !== 0.0 ||
+        options.offsetRay.origin.y !== 0.0 ||
+        options.offsetRay.origin.z !== 0.0 ||
+        options.offsetRay.origin.w !== 1.0) {
+        throw new Error('XRHitTestSource supports offsetRay.origin yet.');
+      }
+    }
+    this[PRIVATE$20] = {
+      session,
+      space: options.space,
+      offsetRay: options.offsetRay || new XRRay(),
+      active: true
+    };
+  }
+  cancel() {
+    this[PRIVATE$20].active = false;
+  }
+  get _space() {
+    return this[PRIVATE$20].space;
+  }
+  get _session() {
+    return this[PRIVATE$20].session;
+  }
+  get _offsetRay() {
+    return this[PRIVATE$20].offsetRay;
+  }
+  get _active() {
+    return this[PRIVATE$20].active;
+  }
+}
+
+class XRTransientInputHitTestResult {
+  constructor() {
+    throw new Error('XRTransientInputHitTestResult is not supported yet.');
+  }
+  getPose(baseSpace) {
+  }
+}
+
+class XRTransientInputHitTestSource {
+  constructor(options) {
+    throw new Error('XRTransientInputHitTestSource is not supported yet.');
+  }
+  cancel() {
+  }
+}
+
+class XRImageAnchor extends XRAnchor {}
+
+const PRIVATE$23 = Symbol('@@webxr-polyfill/XRLightProbe');
+class XRLightProbe {
+	constructor(options = {}){
+		this[PRIVATE$23] = {
+			indirectIrradiance: options.indirectIrradiance
+		};
+	}
+	get indirectIrradiance() {
+		return this[PRIVATE$23].indirectIrradiance;
+	}
+	get primaryLightDirection() {
+		throw new Error('Not implemented');
+	}
+	get primaryLightIntensity() {
+		throw new Error('Not implemented');
+	}
+	get sphericalHarmonicsCoefficients() {
+		throw new Error('Not implemented');
+	}
+	get sphericalHarmonicsOrientation() {
+		throw new Error('Not implemented');
+	}
+}
 
 class XRPlaneMesh extends XRMesh {
 	constructor(transform, center, extent, alignment, geometry, uid=null, timestamp=0) {
@@ -2879,13 +3273,17 @@ var API$1 = {
     XRAnchor,
     XRAnchorOffset,
     XRFaceMesh,
-    XRHitResult,
+    XRHitTestResult,
+    XRHitTestSource,
+    XRTransientInputHitTestResult,
+    XRTransientInputHitTestSource,
     XRImageAnchor,
     XRLightProbe,
     XRMesh,
     XRPlaneMesh,
+    XRRay,
     XRVideoFrame
-}
+};
 
 class XRDevice extends EventTarget {
   constructor(global) {
@@ -2917,6 +3315,529 @@ class XRDevice extends EventTarget {
   getInputPose(inputSource, coordinateSystem, poseType) { throw new Error('Not implemented'); }
   onWindowResize() {
     this.onWindowResize();
+  }
+}
+
+let daydream = {
+  mapping: '',
+  profiles: ['google-daydream', 'generic-trigger-touchpad'],
+  buttons: {
+    length: 3,
+    0: null,
+    1: null,
+    2: 0
+  },
+};
+let viveFocus = {
+  mapping: 'xr-standard',
+  profiles: ['htc-vive-focus', 'generic-trigger-touchpad'],
+  buttons: {
+    length: 3,
+    0: 1,
+    1: null,
+    2: 0
+  },
+};
+let oculusGo = {
+  mapping: 'xr-standard',
+  profiles: ['oculus-go', 'generic-trigger-touchpad'],
+  buttons: {
+    length: 3,
+    0: 1,
+    1: null,
+    2: 0
+  },
+  gripTransform: {
+    orientation: [Math.PI * 0.11, 0, 0, 1]
+  }
+};
+let oculusTouch = {
+  mapping: 'xr-standard',
+  displayProfiles: {
+    'Oculus Quest': ['oculus-touch-v2', 'oculus-touch', 'generic-trigger-squeeze-thumbstick']
+  },
+  profiles: ['oculus-touch', 'generic-trigger-squeeze-thumbstick'],
+  axes: {
+    length: 4,
+    0: null,
+    1: null,
+    2: 0,
+    3: 1
+  },
+  buttons: {
+    length: 7,
+    0: 1,
+    1: 2,
+    2: null,
+    3: 0,
+    4: 3,
+    5: 4,
+    6: null
+  },
+  gripTransform: {
+    position: [0, -0.02, 0.04, 1],
+    orientation: [Math.PI * 0.11, 0, 0, 1]
+  }
+};
+let openVr = {
+  mapping: 'xr-standard',
+  profiles: ['htc-vive', 'generic-trigger-squeeze-touchpad'],
+  displayProfiles: {
+    'HTC Vive': ['htc-vive', 'generic-trigger-squeeze-touchpad'],
+    'HTC Vive DVT': ['htc-vive', 'generic-trigger-squeeze-touchpad'],
+    'Valve Index': ['valve-index', 'generic-trigger-squeeze-touchpad-thumbstick']
+  },
+  buttons: {
+    length: 3,
+    0: 1,
+    1: 2,
+    2: 0
+  },
+  gripTransform: {
+    position: [0, 0, 0.05, 1],
+  },
+  targetRayTransform: {
+    orientation: [Math.PI * -0.08, 0, 0, 1]
+  },
+  userAgentOverrides: {
+    "Firefox": {
+      axes: {
+        invert: [1, 3]
+      }
+    }
+  }
+};
+let samsungGearVR = {
+  mapping: 'xr-standard',
+  profiles: ['samsung-gearvr', 'generic-trigger-touchpad'],
+  buttons: {
+    length: 3,
+    0: 1,
+    1: null,
+    2: 0
+  },
+  gripTransform: {
+    orientation: [Math.PI * 0.11, 0, 0, 1]
+  }
+};
+let samsungOdyssey = {
+  mapping: 'xr-standard',
+  profiles: ['samsung-odyssey', 'microsoft-mixed-reality', 'generic-trigger-squeeze-touchpad-thumbstick'],
+  buttons: {
+    length: 4,
+    0: 1,
+    1: 0,
+    2: 2,
+    3: 4,
+  },
+  gripTransform: {
+    position: [0, -0.02, 0.04, 1],
+    orientation: [Math.PI * 0.11, 0, 0, 1]
+  }
+};
+let windowsMixedReality = {
+  mapping: 'xr-standard',
+  profiles: ['microsoft-mixed-reality', 'generic-trigger-squeeze-touchpad-thumbstick'],
+  buttons: {
+    length: 4,
+    0: 1,
+    1: 0,
+    2: 2,
+    3: 4,
+  },
+  gripTransform: {
+    position: [0, -0.02, 0.04, 1],
+    orientation: [Math.PI * 0.11, 0, 0, 1]
+  }
+};
+let GamepadMappings = {
+  'Daydream Controller': daydream,
+  'Gear VR Controller': samsungGearVR,
+  'HTC Vive Focus Controller': viveFocus,
+  'Oculus Go Controller': oculusGo,
+  'Oculus Touch (Right)': oculusTouch,
+  'Oculus Touch (Left)': oculusTouch,
+  'OpenVR Gamepad': openVr,
+  'Spatial Controller (Spatial Interaction Source) 045E-065A': windowsMixedReality,
+  'Spatial Controller (Spatial Interaction Source) 045E-065D': samsungOdyssey,
+  'Windows Mixed Reality (Right)': windowsMixedReality,
+  'Windows Mixed Reality (Left)': windowsMixedReality,
+};
+
+const HEAD_ELBOW_OFFSET_RIGHTHANDED = fromValues$1(0.155, -0.465, -0.15);
+const HEAD_ELBOW_OFFSET_LEFTHANDED = fromValues$1(-0.155, -0.465, -0.15);
+const ELBOW_WRIST_OFFSET = fromValues$1(0, 0, -0.25);
+const WRIST_CONTROLLER_OFFSET = fromValues$1(0, 0, 0.05);
+const ARM_EXTENSION_OFFSET = fromValues$1(-0.08, 0.14, 0.08);
+const ELBOW_BEND_RATIO = 0.4;
+const EXTENSION_RATIO_WEIGHT = 0.4;
+const MIN_ANGULAR_SPEED = 0.61;
+const MIN_ANGLE_DELTA = 0.175;
+const MIN_EXTENSION_COS = 0.12;
+const MAX_EXTENSION_COS = 0.87;
+const RAD_TO_DEG = 180 / Math.PI;
+function eulerFromQuaternion(out, q, order) {
+  function clamp(value, min$$1, max$$1) {
+    return (value < min$$1 ? min$$1 : (value > max$$1 ? max$$1 : value));
+  }
+  var sqx = q[0] * q[0];
+  var sqy = q[1] * q[1];
+  var sqz = q[2] * q[2];
+  var sqw = q[3] * q[3];
+  if ( order === 'XYZ' ) {
+    out[0] = Math.atan2( 2 * ( q[0] * q[3] - q[1] * q[2] ), ( sqw - sqx - sqy + sqz ) );
+    out[1] = Math.asin(  clamp( 2 * ( q[0] * q[2] + q[1] * q[3] ), -1, 1 ) );
+    out[2] = Math.atan2( 2 * ( q[2] * q[3] - q[0] * q[1] ), ( sqw + sqx - sqy - sqz ) );
+  } else if ( order ===  'YXZ' ) {
+    out[0] = Math.asin(  clamp( 2 * ( q[0] * q[3] - q[1] * q[2] ), -1, 1 ) );
+    out[1] = Math.atan2( 2 * ( q[0] * q[2] + q[1] * q[3] ), ( sqw - sqx - sqy + sqz ) );
+    out[2] = Math.atan2( 2 * ( q[0] * q[1] + q[2] * q[3] ), ( sqw - sqx + sqy - sqz ) );
+  } else if ( order === 'ZXY' ) {
+    out[0] = Math.asin(  clamp( 2 * ( q[0] * q[3] + q[1] * q[2] ), -1, 1 ) );
+    out[1] = Math.atan2( 2 * ( q[1] * q[3] - q[2] * q[0] ), ( sqw - sqx - sqy + sqz ) );
+    out[2] = Math.atan2( 2 * ( q[2] * q[3] - q[0] * q[1] ), ( sqw - sqx + sqy - sqz ) );
+  } else if ( order === 'ZYX' ) {
+    out[0] = Math.atan2( 2 * ( q[0] * q[3] + q[2] * q[1] ), ( sqw - sqx - sqy + sqz ) );
+    out[1] = Math.asin(  clamp( 2 * ( q[1] * q[3] - q[0] * q[2] ), -1, 1 ) );
+    out[2] = Math.atan2( 2 * ( q[0] * q[1] + q[2] * q[3] ), ( sqw + sqx - sqy - sqz ) );
+  } else if ( order === 'YZX' ) {
+    out[0] = Math.atan2( 2 * ( q[0] * q[3] - q[2] * q[1] ), ( sqw - sqx + sqy - sqz ) );
+    out[1] = Math.atan2( 2 * ( q[1] * q[3] - q[0] * q[2] ), ( sqw + sqx - sqy - sqz ) );
+    out[2] = Math.asin(  clamp( 2 * ( q[0] * q[1] + q[2] * q[3] ), -1, 1 ) );
+  } else if ( order === 'XZY' ) {
+    out[0] = Math.atan2( 2 * ( q[0] * q[3] + q[1] * q[2] ), ( sqw - sqx + sqy - sqz ) );
+    out[1] = Math.atan2( 2 * ( q[0] * q[2] + q[1] * q[3] ), ( sqw + sqx - sqy - sqz ) );
+    out[2] = Math.asin(  clamp( 2 * ( q[2] * q[3] - q[0] * q[1] ), -1, 1 ) );
+  } else {
+    console.log('No order given for quaternion to euler conversion.');
+    return;
+  }
+}
+class OrientationArmModel {
+  constructor() {
+    this.hand = 'right';
+    this.headElbowOffset = HEAD_ELBOW_OFFSET_RIGHTHANDED;
+    this.controllerQ = create$4();
+    this.lastControllerQ = create$4();
+    this.headQ = create$4();
+    this.headPos = create$1();
+    this.elbowPos = create$1();
+    this.wristPos = create$1();
+    this.time = null;
+    this.lastTime = null;
+    this.rootQ = create$4();
+    this.position = create$1();
+  }
+  setHandedness(hand) {
+    if (this.hand != hand) {
+      this.hand = hand;
+      if (this.hand == 'left') {
+        this.headElbowOffset = HEAD_ELBOW_OFFSET_LEFTHANDED;
+      } else {
+        this.headElbowOffset = HEAD_ELBOW_OFFSET_RIGHTHANDED;
+      }
+    }
+  }
+  update(controllerOrientation, headPoseMatrix) {
+    this.time = now$1();
+    if (controllerOrientation) {
+      copy$4(this.lastControllerQ, this.controllerQ);
+      copy$4(this.controllerQ, controllerOrientation);
+    }
+    if (headPoseMatrix) {
+      getTranslation(this.headPos, headPoseMatrix);
+      getRotation(this.headQ, headPoseMatrix);
+    }
+    let headYawQ = this.getHeadYawOrientation_();
+    let angleDelta = this.quatAngle_(this.lastControllerQ, this.controllerQ);
+    let timeDelta = (this.time - this.lastTime) / 1000;
+    let controllerAngularSpeed = angleDelta / timeDelta;
+    if (controllerAngularSpeed > MIN_ANGULAR_SPEED) {
+      slerp(this.rootQ, this.rootQ, headYawQ,
+                 Math.min(angleDelta / MIN_ANGLE_DELTA, 1.0));
+    } else {
+      copy$4(this.rootQ, headYawQ);
+    }
+    let controllerForward = fromValues$1(0, 0, -1.0);
+    transformQuat(controllerForward, controllerForward, this.controllerQ);
+    let controllerDotY = dot(controllerForward, [0, 1, 0]);
+    let extensionRatio = this.clamp_(
+        (controllerDotY - MIN_EXTENSION_COS) / MAX_EXTENSION_COS, 0.0, 1.0);
+    let controllerCameraQ = clone$4(this.rootQ);
+    invert$2(controllerCameraQ, controllerCameraQ);
+    multiply$4(controllerCameraQ, controllerCameraQ, this.controllerQ);
+    let elbowPos = this.elbowPos;
+    copy$1(elbowPos, this.headPos);
+    add$1(elbowPos, elbowPos, this.headElbowOffset);
+    let elbowOffset = clone$1(ARM_EXTENSION_OFFSET);
+    scale$1(elbowOffset, elbowOffset, extensionRatio);
+    add$1(elbowPos, elbowPos, elbowOffset);
+    let totalAngle = this.quatAngle_(controllerCameraQ, create$4());
+    let totalAngleDeg = totalAngle * RAD_TO_DEG;
+    let lerpSuppression = 1 - Math.pow(totalAngleDeg / 180, 4);let elbowRatio = ELBOW_BEND_RATIO;
+    let wristRatio = 1 - ELBOW_BEND_RATIO;
+    let lerpValue = lerpSuppression *
+        (elbowRatio + wristRatio * extensionRatio * EXTENSION_RATIO_WEIGHT);
+    let wristQ = create$4();
+    slerp(wristQ, wristQ, controllerCameraQ, lerpValue);
+    let invWristQ = invert$2(create$4(), wristQ);
+    let elbowQ = clone$4(controllerCameraQ);
+    multiply$4(elbowQ, elbowQ, invWristQ);
+    let wristPos = this.wristPos;
+    copy$1(wristPos, WRIST_CONTROLLER_OFFSET);
+    transformQuat(wristPos, wristPos, wristQ);
+    add$1(wristPos, wristPos, ELBOW_WRIST_OFFSET);
+    transformQuat(wristPos, wristPos, elbowQ);
+    add$1(wristPos, wristPos, elbowPos);
+    let offset = clone$1(ARM_EXTENSION_OFFSET);
+    scale$1(offset, offset, extensionRatio);
+    add$1(this.position, this.wristPos, offset);
+    transformQuat(this.position, this.position, this.rootQ);
+    this.lastTime = this.time;
+  }
+  getPosition() {
+    return this.position;
+  }
+  getHeadYawOrientation_() {
+    let headEuler = create$1();
+    eulerFromQuaternion(headEuler, this.headQ, 'YXZ');
+    let destinationQ = fromEuler(create$4(), 0, headEuler[1] * RAD_TO_DEG, 0);
+    return destinationQ;
+  }
+  clamp_(value, min$$1, max$$1) {
+    return Math.min(Math.max(value, min$$1), max$$1);
+  }
+  quatAngle_(q1, q2) {
+    let vec1 = [0, 0, -1];
+    let vec2 = [0, 0, -1];
+    transformQuat(vec1, vec1, q1);
+    transformQuat(vec2, vec2, q2);
+    return angle(vec1, vec2);
+  }
+}
+
+const PRIVATE$24 = Symbol('@@webxr-polyfill/XRRemappedGamepad');
+const PLACEHOLDER_BUTTON = { pressed: false, touched: false, value: 0.0 };
+Object.freeze(PLACEHOLDER_BUTTON);
+class XRRemappedGamepad {
+  constructor(gamepad, display, map) {
+    if (!map) {
+      map = {};
+    }
+    if (map.userAgentOverrides) {
+      for (let agent in map.userAgentOverrides) {
+        if (navigator.userAgent.includes(agent)) {
+          let override = map.userAgentOverrides[agent];
+          for (let key in override) {
+            if (key in map) {
+              Object.assign(map[key], override[key]);
+            } else {
+              map[key] = override[key];
+            }
+          }
+          break;
+        }
+      }
+    }
+    let axes = new Array(map.axes && map.axes.length ? map.axes.length : gamepad.axes.length);
+    let buttons = new Array(map.buttons && map.buttons.length ? map.buttons.length : gamepad.buttons.length);
+    let gripTransform = null;
+    if (map.gripTransform) {
+      let orientation = map.gripTransform.orientation || [0, 0, 0, 1];
+      gripTransform = create();
+      fromRotationTranslation(
+        gripTransform,
+        normalize$2(orientation, orientation),
+        map.gripTransform.position || [0, 0, 0]
+      );
+    }
+    let targetRayTransform = null;
+    if (map.targetRayTransform) {
+      let orientation =  map.targetRayTransform.orientation || [0, 0, 0, 1];
+      targetRayTransform = create();
+      fromRotationTranslation(
+        targetRayTransform,
+        normalize$2(orientation, orientation),
+        map.targetRayTransform.position || [0, 0, 0]
+      );
+    }
+    let profiles = map.profiles;
+    if (map.displayProfiles) {
+      if (display.displayName in map.displayProfiles) {
+        profiles = map.displayProfiles[display.displayName];
+      }
+    }
+    this[PRIVATE$24] = {
+      gamepad,
+      map,
+      profiles: profiles || [gamepad.id],
+      mapping: map.mapping || gamepad.mapping,
+      axes,
+      buttons,
+      gripTransform,
+      targetRayTransform,
+    };
+    this._update();
+  }
+  _update() {
+    let gamepad = this[PRIVATE$24].gamepad;
+    let map = this[PRIVATE$24].map;
+    let axes = this[PRIVATE$24].axes;
+    for (let i = 0; i < axes.length; ++i) {
+      if (map.axes && i in map.axes) {
+        if (map.axes[i] === null) {
+          axes[i] = 0;
+        } else {
+          axes[i] = gamepad.axes[map.axes[i]];
+        }
+      } else {
+        axes[i] = gamepad.axes[i];
+      }
+    }
+    if (map.axes && map.axes.invert) {
+      for (let axis of map.axes.invert) {
+        if (axis < axes.length) {
+          axes[axis] *= -1;
+        }
+      }
+    }
+    let buttons = this[PRIVATE$24].buttons;
+    for (let i = 0; i < buttons.length; ++i) {
+      if (map.buttons && i in map.buttons) {
+        if (map.buttons[i] === null) {
+          buttons[i] = PLACEHOLDER_BUTTON;
+        } else {
+          buttons[i] = gamepad.buttons[map.buttons[i]];
+        }
+      } else {
+        buttons[i] = gamepad.buttons[i];
+      }
+    }
+  }
+  get id() {
+    return '';
+  }
+  get _profiles() {
+    return this[PRIVATE$24].profiles;
+  }
+  get index() {
+    return -1;
+  }
+  get connected() {
+    return this[PRIVATE$24].gamepad.connected;
+  }
+  get timestamp() {
+    return this[PRIVATE$24].gamepad.timestamp;
+  }
+  get mapping() {
+    return this[PRIVATE$24].mapping;
+  }
+  get axes() {
+    return this[PRIVATE$24].axes;
+  }
+  get buttons() {
+    return this[PRIVATE$24].buttons;
+  }
+  get hapticActuators() {
+    return this[PRIVATE$24].gamepad.hapticActuators;
+  }
+}
+class GamepadXRInputSource {
+  constructor(polyfill, display, primaryButtonIndex = 0, primarySqueezeButtonIndex = -1) {
+    this.polyfill = polyfill;
+    this.display = display;
+    this.nativeGamepad = null;
+    this.gamepad = null;
+    this.inputSource = new XRInputSource(this);
+    this.lastPosition = create$1();
+    this.emulatedPosition = false;
+    this.basePoseMatrix = create();
+    this.outputMatrix = create();
+    this.primaryButtonIndex = primaryButtonIndex;
+    this.primaryActionPressed = false;
+    this.primarySqueezeButtonIndex = primarySqueezeButtonIndex;
+    this.primarySqueezeActionPressed = false;
+    this.handedness = '';
+    this.targetRayMode = 'gaze';
+    this.armModel = null;
+  }
+  get profiles() {
+    return this.gamepad ? this.gamepad._profiles : [];
+  }
+  updateFromGamepad(gamepad) {
+    if (this.nativeGamepad !== gamepad) {
+      this.nativeGamepad = gamepad;
+      if (gamepad) {
+        this.gamepad = new XRRemappedGamepad(gamepad, this.display, GamepadMappings[gamepad.id]);
+      } else {
+        this.gamepad = null;
+      }
+    }
+    this.handedness = gamepad.hand === '' ? 'none' : gamepad.hand;
+    if (this.gamepad) {
+      this.gamepad._update();
+    }
+    if (gamepad.pose) {
+      this.targetRayMode = 'tracked-pointer';
+      this.emulatedPosition = !gamepad.pose.hasPosition;
+    } else if (gamepad.hand === '') {
+      this.targetRayMode = 'gaze';
+      this.emulatedPosition = false;
+    }
+  }
+  updateBasePoseMatrix() {
+    if (this.nativeGamepad && this.nativeGamepad.pose) {
+      let pose = this.nativeGamepad.pose;
+      let position = pose.position;
+      let orientation = pose.orientation;
+      if (!position && !orientation) {
+        return;
+      }
+      if (!position) {
+        if (!pose.hasPosition) {
+          if (!this.armModel) {
+            this.armModel = new OrientationArmModel();
+          }
+          this.armModel.setHandedness(this.nativeGamepad.hand);
+          this.armModel.update(orientation, this.polyfill.getBasePoseMatrix());
+          position = this.armModel.getPosition();
+        } else {
+          position = this.lastPosition;
+        }
+      } else {
+        this.lastPosition[0] = position[0];
+        this.lastPosition[1] = position[1];
+        this.lastPosition[2] = position[2];
+      }
+      fromRotationTranslation(this.basePoseMatrix, orientation, position);
+    } else {
+      copy(this.basePoseMatrix, this.polyfill.getBasePoseMatrix());
+    }
+    return this.basePoseMatrix;
+  }
+  getXRPose(coordinateSystem, poseType) {
+    this.updateBasePoseMatrix();
+    switch(poseType) {
+      case "target-ray":
+        coordinateSystem._transformBasePoseMatrix(this.outputMatrix, this.basePoseMatrix);
+        if (this.gamepad && this.gamepad[PRIVATE$24].targetRayTransform) {
+          multiply(this.outputMatrix, this.outputMatrix, this.gamepad[PRIVATE$24].targetRayTransform);
+        }
+        break;
+      case "grip":
+        if (!this.nativeGamepad || !this.nativeGamepad.pose) {
+          return null;
+        }
+        coordinateSystem._transformBasePoseMatrix(this.outputMatrix, this.basePoseMatrix);
+        if (this.gamepad && this.gamepad[PRIVATE$24].gripTransform) {
+          multiply(this.outputMatrix, this.outputMatrix, this.gamepad[PRIVATE$24].gripTransform);
+        }
+        break;
+      default:
+        return null;
+    }
+    coordinateSystem._adjustForOriginOffset(this.outputMatrix);
+    return new XRPose(new XRRigidTransform(this.outputMatrix), this.emulatedPosition);
   }
 }
 
@@ -3901,6 +4822,43 @@ class ARKitDevice extends XRDevice {
 			this._arKitWrapper = null;
 			this._arWatcher = null;
 		}
+		this._hitTestSources = [];
+		this._hitTestResults = new Map();
+		this._hitTestResultsForNextFrame = new Map();
+		this._gamepads = [];
+		this._gamepadInputSources = [];
+		this._touches = [];
+		const primaryButtonIndex = 0;
+		this._gamepads.push(createGamepad('', 'right', 1, true));
+		this._gamepadInputSources.push(new GamepadXRInputSource(this, {}, 0));
+		this._gamepadInputSources[0].active = false;
+		this._touches.push({x: -1, y: -1});
+		document.addEventListener('touchstart', event => {
+			if (!event.touches || event.touches.length == 0) {
+				return;
+			}
+			const touch = event.touches[0];
+			this._touches[0].x = touch.clientX;
+			this._touches[0].y = touch.clientY;
+			const button = this._gamepads[0].buttons[primaryButtonIndex];
+			button.pressed = true;
+			button.value = 1.0;
+		});
+		document.addEventListener('touchmove', event => {
+			if (!event.touches || event.touches.length == 0) {
+				return;
+			}
+			const touch = event.touches[0];
+			this._touches[0].x = touch.clientX;
+			this._touches[0].y = touch.clientY;
+		});
+		document.addEventListener('touchend', event => {
+			const button = this._gamepads[0].buttons[primaryButtonIndex];
+			button.pressed = false;
+			button.value = 0.0;
+			this._touches[0].x = -1;
+			this._touches[0].y = -1;
+		});
 	}
 	static initStyles() {
 		const init = () => {
@@ -3923,12 +4881,61 @@ class ARKitDevice extends XRDevice {
 			getRotation$1(new Float32Array(4), this._headModelMatrix)
 		);
 	}
+	addHitTestSource(source) {
+		if (!this._hitTestSources.includes(source)) {
+			this._hitTestSources.push(source);
+		}
+	}
+	_runHitTest() {
+		this._hitTestResults.clear();
+		let sourceNum = 0;
+		for (let i = 0; i < this._hitTestSources.length; i++) {
+			const source = this._hitTestSources[i];
+			if (source._active) {
+				if (source._session[PRIVATE$15].ended) {
+					source.cancel();
+				} else {
+					this._hitTestSources[sourceNum++] = source;
+					if (this._hitTestResultsForNextFrame.has(source)) {
+						this._hitTestResults.set(source, this._hitTestResultsForNextFrame.get(source));
+					}
+				}
+			}
+		}
+		this._hitTestSources.length = sourceNum;
+		this._hitTestResultsForNextFrame.clear();
+		if (!this._arKitWrapper) {
+			console.error('Hit test requires ARKitWrapper.');
+			return;
+		}
+		for (const source of this._hitTestSources) {
+			const proj = create$6();
+			proj[0] = source._offsetRay.direction.x;
+			proj[1] = source._offsetRay.direction.y;
+			proj[2] = source._offsetRay.direction.z;
+			transformMat4$2(proj, proj, this._arKitWrapper._projectionMatrix);
+			const x = (proj[0] + 1.0) * 0.5;
+			const y = (-proj[1] + 1.0) * 0.5;
+			this._arKitWrapper.hitTest(x, y, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
+				if (!this._hitTestResultsForNextFrame.has(source)) {
+					this._hitTestResultsForNextFrame.set(source, []);
+				}
+				const results = this._hitTestResultsForNextFrame.get(source);
+				for (const hit of hits) {
+					results.push(new XRRigidTransform(new Float32Array(hit.world_transform)));
+				}
+			});
+		}
+	}
+	getHitTestResults(source) {
+		return this._hitTestResults.has(source) ? this._hitTestResults.get(source) : [];
+	}
 	setProjectionMatrix(matrix) {
 		copy$5(this._deviceProjectionMatrix, matrix);
 	}
 	setBaseViewMatrix(matrix) {
 		copy$5(this._headModelMatrixInverse, matrix);
-        invert$3(this._headModelMatrix, this._headModelMatrixInverse);
+		invert$3(this._headModelMatrix, this._headModelMatrixInverse);
 		if (!this._baseFrameSet) {
 			this._baseFrameSet = true;
 			for (let i = 0; i < this._frameOfRefRequestsWaiting.length; i++) {
@@ -3951,15 +4958,16 @@ class ARKitDevice extends XRDevice {
 	}
 	isFeatureSupported(featureDescriptor) {
 		switch(featureDescriptor) {
-		case 'viewer': return true;
-		case 'local': return true;
-		case 'local-floor': return true;
-		case 'bounded': return false;
-		case 'unbounded': return false;
-		case 'worldSensing': return true;
-		case 'computerVision': return true;
-		case 'alignEUS': return true;
-		default: return false;
+			case 'viewer': return true;
+			case 'local': return true;
+			case 'local-floor': return true;
+			case 'bounded': return false;
+			case 'unbounded': return false;
+			case 'worldSensing': return true;
+			case 'computerVision': return true;
+			case 'alignEUS': return true;
+			case 'hit-test': return true;
+			default: return false;
 		}
 	}
 	doesSessionSupportReferenceSpace(sessionId, type) {
@@ -3971,12 +4979,12 @@ class ARKitDevice extends XRDevice {
 			return false;
 		}
 		switch(type) {
-		case 'viewer': return true;
-		case 'local': return true;
-		case 'local-floor': return true;
-		case 'bounded': return false;
-		case 'unbounded': return false;
-		default: return false;
+			case 'viewer': return true;
+			case 'local': return true;
+			case 'local-floor': return true;
+			case 'bounded': return false;
+			case 'unbounded': return false;
+			default: return false;
 		}
 	}
 	async requestSession(mode, enabledFeatures) {
@@ -4024,8 +5032,8 @@ class ARKitDevice extends XRDevice {
 		return watchResult;
 	}
 	onBaseLayerSet(sessionId, layer) {
-	    const session = this._sessions.get(sessionId);
-    	const canvas = layer.context.canvas;
+		const session = this._sessions.get(sessionId);
+		const canvas = layer.context.canvas;
 		const oldLayer = session.baseLayer;
 		session.baseLayer = layer;
 		if (!session.immersive) {
@@ -4126,6 +5134,19 @@ class ARKitDevice extends XRDevice {
 		this._frameSession = session;
 		if (session.immersive) {
 			copy$5(this._projectionMatrix, this._deviceProjectionMatrix);
+			if (session.baseLayer) {
+				const context = session.baseLayer.context;
+				const currentClearColor = context.getParameter(context.COLOR_CLEAR_VALUE);
+				const currentClearDepth = context.getParameter(context.DEPTH_CLEAR_VALUE);
+				const currentClearStencil = context.getParameter(context.STENCIL_CLEAR_VALUE);
+				context.clearColor(0.0, 0.0, 0.0, 0.0);
+				context.clearDepth(1,0);
+				context.clearStencil(0.0);
+				context.clear(context.DEPTH_BUFFER_BIT | context.COLOR_BUFFER_BIT | context.STENCIL_BUFFER_BIT );
+				context.clearColor(currentClearColor[0], currentClearColor[1], currentClearColor[2], currentClearColor[3]);
+				context.clearDepth(currentClearDepth);
+				context.clearStencil(currentClearStencil);
+			}
 		} else {
 			if (session.baseLayer) {
 				const canvas = session.baseLayer.context.canvas;
@@ -4136,8 +5157,40 @@ class ARKitDevice extends XRDevice {
 					renderState.depthFar);
 			}
 		}
+		if (session.immersive) {
+			for (let i = 0; i < this._gamepads.length; ++i) {
+				const gamepad = this._gamepads[i];
+				const inputSourceImpl = this._gamepadInputSources[i];
+				inputSourceImpl.updateFromGamepad(gamepad);
+				inputSourceImpl.targetRayMode = 'screen';
+				if (inputSourceImpl.primaryButtonIndex !== -1) {
+					const primaryActionPressed = gamepad.buttons[inputSourceImpl.primaryButtonIndex].pressed;
+					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed) {
+						this._gamepadInputSources[0].active = true;
+					} else if (!primaryActionPressed && inputSourceImpl.primaryActionPressed) {
+						this.dispatchEvent('@@webxr-polyfill/input-select-end', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
+						this._gamepadInputSources[0].active = false;
+					}
+				}
+			}
+		}
+		this._runHitTest();
 	}
 	onFrameEnd(sessionId) {
+		const session = this._sessions.get(sessionId);
+		if (session.immersive) {
+			for (let i = 0; i < this._gamepads.length; ++i) {
+				const gamepad = this._gamepads[i];
+				const inputSourceImpl = this._gamepadInputSources[i];
+				if (inputSourceImpl.primaryButtonIndex !== -1) {
+					const primaryActionPressed = gamepad.buttons[inputSourceImpl.primaryButtonIndex].pressed;
+					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed) {
+						this.dispatchEvent('@@webxr-polyfill/input-select-start', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
+					}
+					inputSourceImpl.primaryActionPressed = primaryActionPressed;
+				}
+			}
+		}
 		this._frameSession = null;
 	}
 	requestFrameOfReferenceTransform(type, options) {
@@ -4204,9 +5257,43 @@ class ARKitDevice extends XRDevice {
 		return null;
 	}
 	getInputSources() {
-		return [];
+		const inputSources = [];
+		for (const inputSourceImpl of this._gamepadInputSources) {
+			if (inputSourceImpl.active) {
+				inputSources.push(inputSourceImpl.inputSource);
+			}
+		}
+		return inputSources;
 	}
-	getInputPose(inputSource, coordinateSystem) {
+	getInputPose(inputSource, coordinateSystem, poseType) {
+		for (let i = 0; i < this._gamepadInputSources.length; i++) {
+			const inputSourceImpl = this._gamepadInputSources[i];
+			if (inputSourceImpl.active && inputSourceImpl.inputSource === inputSource) {
+				const deviceWidth = document.documentElement.clientWidth;
+				const deviceHeight = document.documentElement.clientHeight;
+				const clientX = this._touches[i].x;
+				const clientY = this._touches[i].y;
+				const normalizedX = (clientX / deviceWidth) * 2.0 - 1.0;
+				const normalizedY = -(clientY / deviceHeight) * 2.0 + 1.0;
+				const viewMatrixInverse = invert$3(create$5(), this._headModelMatrix);
+				coordinateSystem._transformBasePoseMatrix(viewMatrixInverse, viewMatrixInverse);
+				const matrix = identity$3(create$5());
+				const near = 0.1;
+				const aspect = deviceWidth / deviceHeight;
+				matrix[12] = normalizedX * near * aspect;
+				matrix[13] = normalizedY * near;
+				matrix[14] = -near;
+				multiply$5(matrix, viewMatrixInverse, matrix);
+				const gamepad = this._gamepads[i];
+				const gamepadPose = gamepad.pose;
+				getTranslation$1(gamepadPose.position, matrix);
+				getRotation$1(gamepadPose.orientation, matrix);
+				const pose = inputSourceImpl.getXRPose(coordinateSystem, poseType);
+				fromRotationTranslation$1(pose.transform.matrix, gamepadPose.orientation, gamepadPose.position);
+				invert$3(pose.transform.inverse.matrix, pose.transform.matrix);
+				return pose;
+			}
+		}
 		return null;
 	}
 	onWindowResize() {
@@ -4214,6 +5301,28 @@ class ARKitDevice extends XRDevice {
 		});
 	}
 }
+const createGamepad = (id, hand, buttonNum, hasPosition) => {
+	const buttons = [];
+	for (let i = 0; i < buttonNum; i++) {
+		buttons.push({
+			pressed: false,
+			touched: false,
+			value: 0.0
+		});
+	}
+	return {
+		id: id || '',
+		pose: {
+			hasPosition: hasPosition,
+			position: new Float32Array([0, 0, 0]),
+			orientation: new Float32Array([0, 0, 0, 1])
+		},
+		buttons: buttons,
+		hand: hand,
+		mapping: 'xr-standard',
+		axes: [0, 0]
+	};
+};
 let SESSION_ID = 100;
 class Session {
 	constructor(mode, enabledFeatures) {
@@ -4261,12 +5370,6 @@ const xrPolyfill =  !isWebXRViewer ? null : new WebXRPolyfill(null, {
 	webvr: false,
 	cardboard: false
 });
-const _convertRayToARKitScreenCoordinates = (ray, projectionMatrix) => {
-	const proj = transformMat4$2(create$6(), ray, projectionMatrix);
-	const x = (proj[0] + 1) / 2;
-	const y = (-proj[1] + 1) / 2;
-	return [x, y];
-};
 let _arKitWrapper = null;
 const installAnchorsExtension = () => {
 	if (window.XRFrame === undefined) { return; }
@@ -4275,10 +5378,6 @@ const installAnchorsExtension = () => {
 			return Promise.reject();
 		}
 		const workingMatrix1 = create$5();
-		if (value instanceof XRHitResult) {
-			multiply$5(workingMatrix1, value._hit.anchor_transform, value._hit.local_transform);
-			value = workingMatrix1;
-		}
 		if (value instanceof Float32Array) {
 			return new Promise((resolve, reject) => {
 				let localReferenceSpace = this.session[PRIVATE$15]._localSpace;
@@ -4304,43 +5403,26 @@ const installAnchorsExtension = () => {
 };
 const installHitTestingExtension = () => {
 	if (window.XRSession === undefined) { return }
-	XRSession$1.prototype._original_XRSession_rAF = XRSession$1.prototype.requestAnimationFrame;
-	let _hitList = [];
-	XRSession$1.prototype.requestAnimationFrame = function (callback) {
-		return this._original_XRSession_rAF((rightNow, frame) => {
-			for (const hit of _hitList) {
-				hit(rightNow, frame);
-			}
-			_hitList.length = 0;
-			callback(rightNow,frame);
-		})
+	XRSession$1.prototype.requestHitTestSource = function requestHitTestSource(options = {}) {
+		const source = new XRHitTestSource(this, options);
+		const device = this[PRIVATE$15].device;
+		device.addHitTestSource(source);
+		return Promise.resolve(source);
 	};
-	XRSession$1.prototype.requestHitTest = function requestHitTest(direction, referenceSpace, frame) {
-		if (!this[PRIVATE$15].immersive) {
-			return Promise.reject();
+	XRSession$1.prototype.requestHitTestSourceForTransientInput = function requestHitTestSourceForTransientInput() {
+		throw new Error('requestHitTestSourceForTransientInput() is not supported yet.');
+	};
+	XRFrame.prototype.getHitTestResults = function getHitTestResults(hitTestSource) {
+		const device = this.session[PRIVATE$15].device;
+		const transforms = device.getHitTestResults(hitTestSource);
+		const results = [];
+		for (const transform of transforms) {
+			results.push(new XRHitTestResult(this, transform));
 		}
-		return new Promise((resolve, reject) => {
-			const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix);
-			_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
-				if (hits.length === 0) { resolve([]); }
-				let localReferenceSpace = this[PRIVATE$15]._localSpace;
-				let ts = _arKitWrapper._timestamp;
-				_hitList.push( (rightNow, frame) => {
-					copy$5(_workingMatrix,
-							frame.getPose(referenceSpace,
-											localReferenceSpace).transform.matrix);
-					resolve(hits.map(hit => {
-						multiply$5(_workingMatrix2,
-									_workingMatrix,
-									hit.world_transform);
-						return new XRHitResult(_workingMatrix2, hit, ts);
-					}));
-				});
-			}).catch((...params) => {
-				console.error('Error testing for hits', ...params);
-				reject();
-			});
-		});
+		return results;
+	};
+	XRFrame.prototype.geetTransientInputHitTestResult = function geetTransientInputHitTestResult() {
+		throw new Error('geetTransientInputHitTestResult() is not supported yet.');
 	};
 };
 const installRealWorldGeometryExtension = () => {
