@@ -1,13 +1,12 @@
 <html>
-  <!-- Any copyright is dedicated to the Public Domain.
-			  http://creativecommons.org/publicdomain/zero/1.0/
+	<!-- Any copyright is dedicated to the Public Domain.
+		http://creativecommons.org/publicdomain/zero/1.0/
 	-->
 	<head>
 		<title>Reticle example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three/three.min.js"></script>
-		<script module src="../../xrshim.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
@@ -30,124 +29,66 @@
 			import * as vec3 from '../libs/gl-matrix/vec3.js';
 
 			import XREngine from '../XREngine.js';
-			import XRInputManager from '../XRInputManager.js';
 
 			let session = null;
 			let localReferenceSpace = null;
 			let viewerReferenceSpace = null;
 			let engine = null;
 			
+			let hitTestSource = null;
+			let inputSource = null;
+			let isSelecting = false;
+
 			// temporary working variables
 			const workingMatrix = mat4.create();
 			const workingVec3 = vec3.create();
 
-			let savedOrigin = [0,0,0];
-			let savedDirection = [0,0,-1];
 			const reticleParent = new THREE.Object3D();
 			let reticle = null;
 			
 			const reticleTrackedColor = new THREE.Color(0xDDFFDD);
 			const reticleNotTrackedColor = new THREE.Color(0xFF6666);
 			const reticleMaterial = new THREE.MeshBasicMaterial({color: reticleTrackedColor});
-			let requestNextHit = true;
-			let reticleHits = null;
 
-			// handle hit testing slightly differently than other samples, since we're doing
-			// it per frame.  The "boiler plate" code below is slightly different, setting 
-			// requestNextHit on tap instead of executing the hit test.  The custom XREngineHits
-			// does a hit test each frame if the previous one has resolved
-			const handleHitResults = (hits, frame) => {
-				const size = 0.05;
-				if (hits.length > 0) {
-					const hit = hits[0];
+			const goButton = document.getElementById('go-button');
 
-					// convert hit matrices from head to eye level coordinate systems
-					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
-					mat4.multiply(workingMatrix, workingMatrix, hit.hitMatrix);
-
-					reticleParent.matrix.fromArray(workingMatrix);
-					reticleParent.visible = true;   // it starts invisible
-					reticle.material.color = reticleTrackedColor;
-
-					reticleParent.updateMatrixWorld(true);
-				} else {
-					reticle.material.color = reticleNotTrackedColor;
-				}
-				requestNextHit = true;
-			};
-
-			class XREngineHits extends XREngine {
-				endFrame(frame) {
-					if (requestNextHit) {
-						requestNextHit = false;
-
-						session.requestHitTest(savedDirection, viewerReferenceSpace, frame)
-							.then(hits => reticleHits = hits)
-							.catch(err => {
-								console.error('Error testing hits', err);
-							});
-					}
-				}
-			}
-
-			document.getElementById('description').addEventListener('touchstart', event => {
-				event.target.style.display = 'none';
-				event.stopPropagation();
-			}, {capture: true});
-
-			document.getElementById('go-button').addEventListener('click', event => {
-				if (!session) {
+			const initXR = () => {
+				if (navigator.xr) {
 					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
 						if (supported) {
-							navigator.xr.requestSession('immersive-ar')
-								.then(handleSessionStarted)
-								.catch(err => {
-									console.error('Session setup error', err);
-								});
-							document.getElementById('go-button').innerText = 'End';
+							goButton.disabled = false;
+							goButton.addEventListener('click', onButtonClick);
 						} else {
-							throw new Error('No immersive-ar support');
+							goButton.initText = 'No WebXR AR support';
 						}
 					});
 				} else {
-					session.end();
+					goButton.initText = 'No WebXR support';
 				}
-			}, true);
-
-			function onSessionEnded(event) {
-				session = null;
-				reticleParent.visible = false;   // it starts invisible
-				document.getElementById('go-button').innerText = 'Go';
-	        }
-
-			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager((eventName, details) => {
-				if (session === null) return;
-
-				switch(eventName){
-					case 'normalized-touch':
-						hitTestWithScreenCoordinates(...details.normalizedCoordinates);
-						break;
-					default:
-						console.error('unknown xr input event', eventName, details);
-						break;
-				}
-			});
-
-			const hitTestWithScreenCoordinates = (normalizedX, normalizedY) => {
-				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(
-					normalizedX, normalizedY, engine.camera.projectionMatrix);
-				savedOrigin = origin;
-				savedDirection = direction;
-
-				requestNextHit = true;
 			};
 
-			const handleSessionStarted = async xrSession => {
-				session = xrSession;
+			const onButtonClick = event => {
+				if (!session) {
+					navigator.xr.requestSession('immersive-ar', {requiredFeatures: ['hit-test']})
+						.then(xrSession => {
+							initSession(xrSession);
+							goButton.innerText = 'End';
+						}).catch(err => {
+							console.error('Session setup error', err);
+						});
+				} else {
+					session.end();
+				}
+			};
 
-				session.addEventListener('end', onSessionEnded);
+			const initSession = async xrSession => {
+				session = xrSession;
+				session.addEventListener('end', onSessionEnd);
+				session.addEventListener('select', onSelect);
+				session.addEventListener('inputsourceschange', onInputSourcesChange);
+
+				localReferenceSpace = await session.requestReferenceSpace('local');
+				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
 
 				// Create the context where we will render our 3D scene
 				const canvas = document.createElement('canvas');
@@ -160,17 +101,13 @@
 				// Set up the base layer
 				session.updateRenderState({baseLayer: new XRWebGLLayer(session, context)});
 
-				localReferenceSpace = await session.requestReferenceSpace('local');
-				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
-
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
-				// Our custom engine class does hit testing at the end of each rAF 
-				engine = new XREngineHits(canvas, context);
+				engine = new XREngine(canvas, context);
 
+				// get the location of the device, and use it to create an
+				// anchor with the identity orientation
 				session.requestAnimationFrame(async (t, frame) => {
-					// get the location of the device, and use it to create an 
-					// anchor with the identity orientation
 					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
 					mat4.getTranslation(workingVec3, workingMatrix);
 					mat4.fromTranslation(workingMatrix, workingVec3);
@@ -182,6 +119,11 @@
 					session.requestAnimationFrame(handleAnimationFrame);
 				});
 
+				// initialize hit test source at center
+				session.requestHitTestSource({space: viewerReferenceSpace}).then(xrHitTestSource => {
+					hitTestSource = xrHitTestSource;
+				});
+
 				// initialize scene
 
 				engine.addAmbientLight();
@@ -191,7 +133,7 @@
 				// for debugging by uncommenting these lines
 				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
 				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
-				
+
 				reticle = new THREE.Mesh(
 					new THREE.RingGeometry(0.04, 0.05, 36, 64),
 					reticleMaterial
@@ -205,27 +147,96 @@
 				engine.scene.add(reticleParent);
 			};
 
-			////////////////
+			const onSessionEnd = event => {
+				clearHitTestSource();
+				session = null;
+				inputSource = null;
+				viewerReferenceSpace = null;
+				localReferenceSpace = null;
+				reticleParent.visible = false;   // it starts invisible
+				goButton.innerText = 'Go';
+			};
+
+			const onInputSourcesChange = event => {
+				if (inputSource && event.removed.includes(inputSource)) {
+					inputSource = null;
+				}
+				if (!inputSource && event.added.length > 0) {
+					inputSource = event.added[0];
+				}
+			};
+
+			const onSelect = event => {
+				isSelecting = true;
+			};
+
+			const clearHitTestSource = () => {
+				if (hitTestSource) {
+					hitTestSource.cancel();
+				}
+				hitTestSource = null;
+			};
+
+			// Create offset ray for hit test from the relative transform
+			// between viewerPose and inputPose. There may be a room to optimize.
+			const createOffsetRay = (viewerPose, inputPose) => {
+				const offsetMatrix = mat4.multiply(mat4.create(), viewerPose.transform.matrix, inputPose.transform.matrix);
+				const direction = vec3.fromValues(0.0, 0.0, -0.2);
+				vec3.transformMat4(direction, direction, offsetMatrix);
+				vec3.normalize(direction, direction);
+				const offsetDirection = {
+					x: direction[0],
+					y: direction[1],
+					z: direction[2],
+					w: 0.0
+				};
+				const offsetOrigin = {x: 0, y: 0, z: 0, w: 1.0};
+				return new XRRay(offsetOrigin, offsetDirection);
+			};
+
 			// render loop			
+
 			const handleAnimationFrame = (t, frame) => {
 				if (!session || session.ended) return;
 
 				session.requestAnimationFrame(handleAnimationFrame);
 
-				if (reticleHits) {
-					handleHitResults(reticleHits, frame);
-					reticleHits = null;
-				}
-
-
-				const pose = frame.getViewerPose(localReferenceSpace);
-				if (!pose) {
-					console.log('No pose');
+				const viewerPose = frame.getViewerPose(localReferenceSpace);
+				if (!viewerPose) {
+					console.log('No viewer pose');
 					return;
 				}
 
+				// Create HitTest Source. Calculating offset ray from the relative transform
+				// between viewerPose and inputPose so we need to do in animation frame.
+				if (isSelecting && inputSource) {
+					const inputPose = frame.getPose(inputSource.targetRaySpace, localReferenceSpace);
+					const offsetRay = createOffsetRay(viewerPose, inputPose);
+					clearHitTestSource();
+					session.requestHitTestSource({space: viewerReferenceSpace, offsetRay: offsetRay}).then(xrHitTestSource => {
+						hitTestSource = xrHitTestSource;
+					});
+					isSelecting = false;
+				}
+
+				if (hitTestSource) {
+					const results = frame.getHitTestResults(hitTestSource);
+					if (results.length > 0) {
+						const result = results[0];
+						const pose = result.getPose(localReferenceSpace);
+						if (pose) {
+							reticleParent.matrix.fromArray(pose.transform.matrix);
+							reticleParent.visible = true;   // it starts invisible
+							reticle.material.color = reticleTrackedColor;
+							reticleParent.updateMatrixWorld(true);
+						}
+					} else {
+						reticle.material.color = reticleNotTrackedColor;
+					}
+				}
+
 				engine.startFrame();
-				for (const view of pose.views) {
+				for (const view of viewerPose.views) {
 					engine.preRender(
 						session.renderState.baseLayer.getViewport(view),
 						view.projectionMatrix,
@@ -233,8 +244,10 @@
 					);
 					engine.render();
 				}
-				engine.endFrame(frame);
+				engine.endFrame();
 			};
+
+			initXR();
 		</script>
 	</body>
 </html>
