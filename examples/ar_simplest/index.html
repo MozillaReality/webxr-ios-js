@@ -1,13 +1,12 @@
 <html>
-  <!-- Any copyright is dedicated to the Public Domain.
-			  http://creativecommons.org/publicdomain/zero/1.0/
+	<!-- Any copyright is dedicated to the Public Domain.
+		http://creativecommons.org/publicdomain/zero/1.0/
 	-->
 	<head>
 		<title>Simple AR example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three/three.min.js"></script>
- 		<script module src="../../xrshim.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 		<script src="../models/TeapotBufferGeometry.js"></script>
 	</head>
@@ -33,34 +32,43 @@
 			const workingMatrix = mat4.create();
 			const workingVec3 = vec3.create();
 
-			document.getElementById('go-button').addEventListener('click', event => {
-				if (!session) {
+			const goButton = document.getElementById('go-button');
+
+			const initXR = () => {
+				if (navigator.xr) {
 					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
 						if (supported) {
-							navigator.xr.requestSession('immersive-ar')
-								.then(handleSessionStarted)
-								.catch(err => {
-									console.error('Session setup error', err)
-								});
+							goButton.disabled = false;
+							goButton.addEventListener('click', onButtonClick);
 						} else {
-							throw new Error('No immersive-ar support');
+							goButton.initText = 'No WebXR AR support';
 						}
 					});
-					document.getElementById('go-button').innerText = 'End';
+				} else {
+					goButton.initText = 'No WebXR support';
+				}
+			};
+
+			const onButtonClick = event => {
+				if (!session) {
+					navigator.xr.requestSession('immersive-ar')
+						.then(xrSession => {
+							initSession(xrSession);
+							goButton.innerText = 'End';
+						}).catch(err => {
+							console.error('Session setup error', err);
+						});
 				} else {
 					session.end();
 				}
-			}, true);
+			};
 
-			function onSessionEnded(event) {
-				session = null;
-				document.getElementById('go-button').innerText = 'Go';
-	        }
-
-			const handleSessionStarted = async xrSession => {
+			const initSession = async xrSession => {
 				session = xrSession;
+				session.addEventListener('end', onSessionEnd);
 
-				session.addEventListener('end', onSessionEnded);
+				localReferenceSpace = await session.requestReferenceSpace('local');
+				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
 
 				// Create the context where we will render our 3D scene
 				const canvas = document.createElement('canvas');
@@ -73,17 +81,13 @@
 				// Set up the base layer
 				session.updateRenderState({baseLayer: new XRWebGLLayer(session, context)});
 
-				localReferenceSpace = await session.requestReferenceSpace('local');
-				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
-
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, context);
 
-				// want to anchor content to a known anchor, near me
+				// get the location of the device, and use it to create an
+				// anchor with the identity orientation
 				session.requestAnimationFrame(async (t, frame) => {
-					// get the location of the device, and use it to create an 
-					// anchor with the identity orientation
 					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
 					mat4.getTranslation(workingVec3, workingMatrix);
 					mat4.fromTranslation(workingMatrix, workingVec3);
@@ -95,7 +99,8 @@
 					session.requestAnimationFrame(handleAnimationFrame);
 				});
 
-				// Initialize scene
+				// initialize scene
+
 				engine.addAmbientLight();
 				engine.addDirectionalLight();
 
@@ -103,7 +108,14 @@
 				engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44);
 				engine.addTeapot([0,0, -1]);
 				engine.addAxesHelper([0,0,0], [0.2,0.2,0.2]);
-			}
+			};
+
+			const onSessionEnd = event => {
+				session = null;
+				viewerReferenceSpace = null;
+				localReferenceSpace = null;
+				goButton.innerText = 'Go';
+			};
 
 			// render loop			
 			const handleAnimationFrame = (t, frame) => {
@@ -127,6 +139,8 @@
 				}
 				engine.endFrame();
 			}
+
+			initXR();
 		</script>
 	</body>
 </html>
