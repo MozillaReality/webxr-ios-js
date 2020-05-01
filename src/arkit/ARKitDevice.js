@@ -11,6 +11,7 @@ import * as vec3 from 'gl-matrix/src/gl-matrix/vec3';
 import XRDevice from 'webxr-polyfill/src/devices/XRDevice';
 import GamepadXRInputSource from 'webxr-polyfill/src/devices/GamepadXRInputSource';
 import {PRIVATE as XRSESSION_PRIVATE} from 'webxr-polyfill/src/api/XRSession';
+import XRSessionEvent from 'webxr-polyfill/src/api/XRSessionEvent';
 
 import {throttle} from '../lib/throttle.js';
 
@@ -70,6 +71,16 @@ export default class ARKitDevice extends XRDevice {
 		this._hitTestResults = new Map();
 		this._hitTestResultsForNextFrame = new Map();
 
+		// DOM overlay
+
+		this._domOverlayRoot = null;
+		this._topMostDomElement = null;
+
+		// XRSessionEvent named beforexrselect needs active XRSession instance.
+		// @TODO: Ideally the event should be dispatched from XRSession in webxr-polyfill.js
+		// and ARKitDevice shouldn't have reference to XRSession?
+		this._activeXRSession = null;
+
 		// Input set up
 		// Note: This touch input event is not AR kit specifi so that
 		// should we move this logic out of ARKitDevice?
@@ -83,16 +94,35 @@ export default class ARKitDevice extends XRDevice {
 		this._gamepadInputSources.push(new GamepadXRInputSource(this, {}, 0));
 		// Add active property to handle input as trasient input.
 		// Set true only when the screen is touched.
-		this._gamepadInputSources[0].active = false;
+		this._gamepadInputSources[0]._active = false;
 		this._touches.push({x: -1, y: -1});
+
+		const getTopMostDomElement = (x, y) => {
+			if (!this._domOverlayRoot) {
+				return null;
+			}
+			const elements = document.elementsFromPoint(x, y);
+			for (const element of elements) {
+				if (this._domOverlayRoot.contains(element)) {
+					return element;
+				}
+			}
+			return null;
+		};
 
 		document.addEventListener('touchstart', event => {
 			if (!event.touches || event.touches.length == 0) {
 				return;
 			}
+
 			const touch = event.touches[0];
-			this._touches[0].x = touch.clientX;
-			this._touches[0].y = touch.clientY;
+			const x = touch.clientX;
+			const y = touch.clientY;
+
+			this._topMostDomElement = getTopMostDomElement(x, y);
+
+			this._touches[0].x = x;
+			this._touches[0].y = y;
 
 			const button = this._gamepads[0].buttons[primaryButtonIndex];
 			button.pressed = true;
@@ -103,12 +133,23 @@ export default class ARKitDevice extends XRDevice {
 			if (!event.touches || event.touches.length == 0) {
 				return;
 			}
+
 			const touch = event.touches[0];
-			this._touches[0].x = touch.clientX;
-			this._touches[0].y = touch.clientY;
+			const x = touch.clientX;
+			const y = touch.clientY;
+
+			this._topMostDomElement = getTopMostDomElement(x, y);
+
+			this._touches[0].x = x;
+			this._touches[0].y = y;
 		});
 
 		document.addEventListener('touchend', event => {
+			const x = this._touches[0].x;
+			const y = this._touches[0].y;
+
+			this._topMostDomElement = getTopMostDomElement(x, y);
+
 			const button = this._gamepads[0].buttons[primaryButtonIndex];
 			button.pressed = false;
 			button.value = 0.0;
@@ -212,6 +253,28 @@ export default class ARKitDevice extends XRDevice {
 		return this._hitTestResults.has(source) ? this._hitTestResults.get(source) : [];
 	}
 
+	// DOM overlay
+
+	setDomOverlayRoot(root) {
+		this._domOverlayRoot = root;
+	}
+
+	setActiveXRSession(xrSession) {
+		this._activeXRSession = xrSession;
+	}
+
+	_shouldSuppressSelectEvents() {
+		if (this._topMostDomElement && this._topMostDomElement.dispatchEvent) {
+			const event = new XRSessionEvent('beforexrselect', {session: this._activeXRSession, cancelable: true});
+			// Assuming event handlers are called synchronously. Is it correct?
+			this._topMostDomElement.dispatchEvent(event);
+			if (event.defaultPrevented) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// set methods called by ARWatcher when the device data is sent from Apple ARKit
 
 	setProjectionMatrix(matrix) {
@@ -268,6 +331,7 @@ export default class ARKitDevice extends XRDevice {
 			case 'computerVision': return true;
 			case 'alignEUS': return true;
 			case 'hit-test': return true;
+			case 'dom-overlay': return true;
 
 			default: return false;
 		};
@@ -386,7 +450,8 @@ export default class ARKitDevice extends XRDevice {
 		var children = document.body.children;
 		for (var i = 0; i < children.length; i++) {
 			var child = children[i];
-			if (child != this._wrapperDiv && child != canvas) {
+			if (child != this._wrapperDiv && child != canvas &&
+				(!this._domOverlayRoot || !this._domOverlayRoot.contains(child))) {
 				var display = child.style.display;
 				child._displayChanged = true;
 				child._displayWas = display
@@ -396,14 +461,7 @@ export default class ARKitDevice extends XRDevice {
 
 		session.canvasParent = canvas.parentNode
 		session.canvasNextSibling = canvas.nextSibling
-
-		// if (canvas._displayChanged) {
-		// 	session.canvasDisplay = canvas._displayWas
-		// 	canvas._displayWas = ""
-		// 	canvas._displayChanged = false;
-		// } else {
-			session.canvasDisplay = canvas.style.display
-		// }
+		session.canvasDisplay = canvas.style.display
 		canvas.style.display = "block"
 		session.canvasBackground = canvas.style.backgroundColor
 		canvas.style.backgroundColor = "transparent"
@@ -429,7 +487,7 @@ export default class ARKitDevice extends XRDevice {
 				this.endSession(session.id)
 
 				this.dispatchEvent('@@webxr-polyfill/vr-present-end', session.id);
-			  }	  
+			}
 		}
 	}
 
@@ -482,6 +540,10 @@ export default class ARKitDevice extends XRDevice {
 			this._activeSession = null;
 			mat4.identity(this._headModelMatrix);
 			this._arKitWrapper.stop();
+
+			this._domOverlayRoot = null;
+			this._topMostDomElement = null;
+			this._activeXRSession = null;
 		}
 		this._frameSession = null;
 
@@ -550,12 +612,14 @@ export default class ARKitDevice extends XRDevice {
 				if (inputSourceImpl.primaryButtonIndex !== -1) {
 					const primaryActionPressed = gamepad.buttons[inputSourceImpl.primaryButtonIndex].pressed;
 					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed) {
-						this._gamepadInputSources[0].active = true;
+						this._gamepadInputSources[0]._active = true;
 						// select start event is fired in onFrameEnd().
 						// See the comment there for the detail.
 					} else if (!primaryActionPressed && inputSourceImpl.primaryActionPressed) {
-						this.dispatchEvent('@@webxr-polyfill/input-select-end', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
-						this._gamepadInputSources[0].active = false;
+						if (!this._shouldSuppressSelectEvents()) {
+							this.dispatchEvent('@@webxr-polyfill/input-select-end', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
+						}
+						this._gamepadInputSources[0]._active = false;
 					}
 					// New inputSourceImpl.primaryActionPressed is saved in onFrameEnd()
 				}
@@ -582,7 +646,7 @@ export default class ARKitDevice extends XRDevice {
 				const inputSourceImpl = this._gamepadInputSources[i];
 				if (inputSourceImpl.primaryButtonIndex !== -1) {
 					const primaryActionPressed = gamepad.buttons[inputSourceImpl.primaryButtonIndex].pressed;
-					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed) {
+					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed && !this._shouldSuppressSelectEvents()) {
 						this.dispatchEvent('@@webxr-polyfill/input-select-start', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
 					}
 					inputSourceImpl.primaryActionPressed = primaryActionPressed;
@@ -676,7 +740,7 @@ export default class ARKitDevice extends XRDevice {
 	getInputSources() {
 		const inputSources = [];
 		for (const inputSourceImpl of this._gamepadInputSources) {
-			if (inputSourceImpl.active) {
+			if (inputSourceImpl._active) {
 				inputSources.push(inputSourceImpl.inputSource);
 			}
 		}
@@ -686,7 +750,7 @@ export default class ARKitDevice extends XRDevice {
 	getInputPose(inputSource, coordinateSystem, poseType) {
 		for (let i = 0; i < this._gamepadInputSources.length; i++) {
 			const inputSourceImpl = this._gamepadInputSources[i];
-			if (inputSourceImpl.active && inputSourceImpl.inputSource === inputSource) {
+			if (inputSourceImpl._active && inputSourceImpl.inputSource === inputSource) {
 				// @TODO: Support Transient input
 				const deviceWidth = document.documentElement.clientWidth;
 				const deviceHeight = document.documentElement.clientHeight;

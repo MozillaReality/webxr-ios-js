@@ -355,6 +355,14 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 			if (mode === 'immersive-ar') {
 				session[XRSESSION_PRIVATE]._localSpace = await session.requestReferenceSpace('local')
 			}
+
+			// DOM overlay API
+			if (xrSessionInit && xrSessionInit.domOverlay && xrSessionInit.domOverlay.root) {
+				session.domOverlayState = {type: 'screen'};
+				const device = session[XRSESSION_PRIVATE].device;
+				device.setDomOverlayRoot(xrSessionInit.domOverlay.root);
+				device.setActiveXRSession(session);
+			}
 			return session
 		};
 	}
