@@ -380,8 +380,10 @@ export default class ARKitDevice extends XRDevice {
 			oldCanvas.style.backgroundColor = session.canvasBackground
 		}
 
-		session.bodyBackground = document.body.style.backgroundColor;
+		session.bodyBackgroundColor = document.body.style.backgroundColor;
+		session.bodyBackgroundImage = document.body.style.backgroundImage;
 		document.body.style.backgroundColor = "transparent";
+		document.body.style.backgroundImage = "none";
 
 		var children = document.body.children;
 		for (var i = 0; i < children.length; i++) {
@@ -474,7 +476,8 @@ export default class ARKitDevice extends XRDevice {
 				canvas.style.display = session.canvasDisplay;
 				canvas.style.backgroundColor = session.canvasBackground;
 
-				document.body.style.backgroundColor = session.bodyBackground;
+				document.body.style.backgroundColor = session.bodyBackgroundColor;
+				document.body.style.backgroundImage = session.bodyBackgroundImage;
 			}
 	
 			this._wrapperDiv.style.display = "none";
