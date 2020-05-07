@@ -8,6 +8,7 @@
 
 import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill';
 
+import XRSystem from 'webxr-polyfill/src/api/XRSystem';
 import XRSession, {PRIVATE as XRSESSION_PRIVATE} from 'webxr-polyfill/src/api/XRSession';
 
 import * as mat4 from 'gl-matrix/src/gl-matrix/mat4';
@@ -27,7 +28,7 @@ const _workingMatrix2 = mat4.create();
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
 WebXRPolyfill.prototype._patchNavigatorXR = function() {
-	this.xr = new XR(Promise.resolve(new ARKitDevice(this.global)));
+	this.xr = new XRSystem(Promise.resolve(new ARKitDevice(this.global)));
 	this.xr._mozillaXRViewer = true;
 	Object.defineProperty(this.global.navigator, 'xr', {
 		value: this.xr,
@@ -333,20 +334,20 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 
 	// Some workarounds to let the official WebXR polyfill work with our polyfill
 
-	if(window.XR) {
+	if(window.XRSystem) {
 		// Note: The polyfill supports only immersive-ar mode for now.
 		//       See https://github.com/MozillaReality/webxr-ios-js/pull/34#discussion_r334910337
 		//       The official WebXR polyfill always accepts inline mode
-		//       so overriding XR.isSessionSupported and XR.requestSession to refuse inline mode.
+		//       so overriding XRSystem.isSessionSupported and XRSystem.requestSession to refuse inline mode.
 		// @TODO: Support inline mode. WebXR API specification defines that any XR Device must
 		//        support inline mode 
-		XR.prototype._isSessionSupported = XR.prototype.isSessionSupported;
-		XR.prototype._requestSession = XR.prototype.requestSession;
-		XR.prototype.isSessionSupported = function (mode) {
+		XRSystem.prototype._isSessionSupported = XRSystem.prototype.isSessionSupported;
+		XRSystem.prototype._requestSession = XRSystem.prototype.requestSession;
+		XRSystem.prototype.isSessionSupported = function (mode) {
 			if (!(mode === 'immersive-ar' || mode === 'inline')) return Promise.resolve(false);
 			return this._isSessionSupported(mode);
 		};
-		XR.prototype.requestSession = async function (mode, xrSessionInit) {
+		XRSystem.prototype.requestSession = async function (mode, xrSessionInit) {
 			if (!(mode === 'immersive-ar' || mode === 'inline')) {
 				throw new DOMException('Polyfill Error: only immersive-ar or inline mode is supported.'); 
 			}
