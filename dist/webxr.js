@@ -1998,8 +1998,68 @@ function multiply$5(out, a, b) {
 
 
 
-
-
+function rotateX$3(out, a, rad) {
+  let s = Math.sin(rad);
+  let c = Math.cos(rad);
+  let a10 = a[4];
+  let a11 = a[5];
+  let a12 = a[6];
+  let a13 = a[7];
+  let a20 = a[8];
+  let a21 = a[9];
+  let a22 = a[10];
+  let a23 = a[11];
+  if (a !== out) {
+    out[0]  = a[0];
+    out[1]  = a[1];
+    out[2]  = a[2];
+    out[3]  = a[3];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+  out[4] = a10 * c + a20 * s;
+  out[5] = a11 * c + a21 * s;
+  out[6] = a12 * c + a22 * s;
+  out[7] = a13 * c + a23 * s;
+  out[8] = a20 * c - a10 * s;
+  out[9] = a21 * c - a11 * s;
+  out[10] = a22 * c - a12 * s;
+  out[11] = a23 * c - a13 * s;
+  return out;
+}
+function rotateY$3(out, a, rad) {
+  let s = Math.sin(rad);
+  let c = Math.cos(rad);
+  let a00 = a[0];
+  let a01 = a[1];
+  let a02 = a[2];
+  let a03 = a[3];
+  let a20 = a[8];
+  let a21 = a[9];
+  let a22 = a[10];
+  let a23 = a[11];
+  if (a !== out) {
+    out[4]  = a[4];
+    out[5]  = a[5];
+    out[6]  = a[6];
+    out[7]  = a[7];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+  out[0] = a00 * c - a20 * s;
+  out[1] = a01 * c - a21 * s;
+  out[2] = a02 * c - a22 * s;
+  out[3] = a03 * c - a23 * s;
+  out[8] = a00 * s + a20 * c;
+  out[9] = a01 * s + a21 * c;
+  out[10] = a02 * s + a22 * c;
+  out[11] = a03 * s + a23 * c;
+  return out;
+}
 
 function fromTranslation$2(out, v) {
   out[0] = 1;
@@ -4825,21 +4885,39 @@ class ARKitDevice extends XRDevice {
 		this._hitTestSources = [];
 		this._hitTestResults = new Map();
 		this._hitTestResultsForNextFrame = new Map();
+		this._domOverlayRoot = null;
+		this._topMostDomElement = null;
+		this._activeXRSession = null;
 		this._gamepads = [];
 		this._gamepadInputSources = [];
 		this._touches = [];
 		const primaryButtonIndex = 0;
 		this._gamepads.push(createGamepad('', 'right', 1, true));
 		this._gamepadInputSources.push(new GamepadXRInputSource(this, {}, 0));
-		this._gamepadInputSources[0].active = false;
+		this._gamepadInputSources[0]._active = false;
 		this._touches.push({x: -1, y: -1});
+		const getTopMostDomElement = (x, y) => {
+			if (!this._domOverlayRoot) {
+				return null;
+			}
+			const elements = document.elementsFromPoint(x, y);
+			for (const element of elements) {
+				if (this._domOverlayRoot.contains(element)) {
+					return element;
+				}
+			}
+			return null;
+		};
 		document.addEventListener('touchstart', event => {
 			if (!event.touches || event.touches.length == 0) {
 				return;
 			}
 			const touch = event.touches[0];
-			this._touches[0].x = touch.clientX;
-			this._touches[0].y = touch.clientY;
+			const x = touch.clientX;
+			const y = touch.clientY;
+			this._topMostDomElement = getTopMostDomElement(x, y);
+			this._touches[0].x = x;
+			this._touches[0].y = y;
 			const button = this._gamepads[0].buttons[primaryButtonIndex];
 			button.pressed = true;
 			button.value = 1.0;
@@ -4849,10 +4927,16 @@ class ARKitDevice extends XRDevice {
 				return;
 			}
 			const touch = event.touches[0];
-			this._touches[0].x = touch.clientX;
-			this._touches[0].y = touch.clientY;
+			const x = touch.clientX;
+			const y = touch.clientY;
+			this._topMostDomElement = getTopMostDomElement(x, y);
+			this._touches[0].x = x;
+			this._touches[0].y = y;
 		});
 		document.addEventListener('touchend', event => {
+			const x = this._touches[0].x;
+			const y = this._touches[0].y;
+			this._topMostDomElement = getTopMostDomElement(x, y);
 			const button = this._gamepads[0].buttons[primaryButtonIndex];
 			button.pressed = false;
 			button.value = 0.0;
@@ -4930,6 +5014,22 @@ class ARKitDevice extends XRDevice {
 	getHitTestResults(source) {
 		return this._hitTestResults.has(source) ? this._hitTestResults.get(source) : [];
 	}
+	setDomOverlayRoot(root) {
+		this._domOverlayRoot = root;
+	}
+	setActiveXRSession(xrSession) {
+		this._activeXRSession = xrSession;
+	}
+	_shouldSuppressSelectEvents() {
+		if (this._topMostDomElement && this._topMostDomElement.dispatchEvent) {
+			const event = new XRSessionEvent('beforexrselect', {session: this._activeXRSession, cancelable: true});
+			this._topMostDomElement.dispatchEvent(event);
+			if (event.defaultPrevented) {
+				return true;
+			}
+		}
+		return false;
+	}
 	setProjectionMatrix(matrix) {
 		copy$5(this._deviceProjectionMatrix, matrix);
 	}
@@ -4967,6 +5067,7 @@ class ARKitDevice extends XRDevice {
 			case 'computerVision': return true;
 			case 'alignEUS': return true;
 			case 'hit-test': return true;
+			case 'dom-overlay': return true;
 			default: return false;
 		}
 	}
@@ -5047,12 +5148,15 @@ class ARKitDevice extends XRDevice {
 			oldCanvas.style.display = session.canvasDisplay;
 			oldCanvas.style.backgroundColor = session.canvasBackground;
 		}
-		session.bodyBackground = document.body.style.backgroundColor;
+		session.bodyBackgroundColor = document.body.style.backgroundColor;
+		session.bodyBackgroundImage = document.body.style.backgroundImage;
 		document.body.style.backgroundColor = "transparent";
+		document.body.style.backgroundImage = "none";
 		var children = document.body.children;
 		for (var i = 0; i < children.length; i++) {
 			var child = children[i];
-			if (child != this._wrapperDiv && child != canvas) {
+			if (child != this._wrapperDiv && child != canvas &&
+				(!this._domOverlayRoot || !this._domOverlayRoot.contains(child))) {
 				var display = child.style.display;
 				child._displayChanged = true;
 				child._displayWas = display;
@@ -5061,7 +5165,7 @@ class ARKitDevice extends XRDevice {
 		}
 		session.canvasParent = canvas.parentNode;
 		session.canvasNextSibling = canvas.nextSibling;
-			session.canvasDisplay = canvas.style.display;
+		session.canvasDisplay = canvas.style.display;
 		canvas.style.display = "block";
 		session.canvasBackground = canvas.style.backgroundColor;
 		canvas.style.backgroundColor = "transparent";
@@ -5078,7 +5182,7 @@ class ARKitDevice extends XRDevice {
 			if (session.immersive && !session.ended) {
 				this.endSession(session.id);
 				this.dispatchEvent('@@webxr-polyfill/vr-present-end', session.id);
-			  }
+			}
 		}
 	}
 	endSession(sessionId) {
@@ -5114,12 +5218,16 @@ class ARKitDevice extends XRDevice {
 				canvas.style.height = session.canvasHeight;
 				canvas.style.display = session.canvasDisplay;
 				canvas.style.backgroundColor = session.canvasBackground;
-				document.body.style.backgroundColor = session.bodyBackground;
+				document.body.style.backgroundColor = session.bodyBackgroundColor;
+				document.body.style.backgroundImage = session.bodyBackgroundImage;
 			}
 			this._wrapperDiv.style.display = "none";
 			this._activeSession = null;
 			identity$3(this._headModelMatrix);
 			this._arKitWrapper.stop();
+			this._domOverlayRoot = null;
+			this._topMostDomElement = null;
+			this._activeXRSession = null;
 		}
 		this._frameSession = null;
 	}
@@ -5166,10 +5274,12 @@ class ARKitDevice extends XRDevice {
 				if (inputSourceImpl.primaryButtonIndex !== -1) {
 					const primaryActionPressed = gamepad.buttons[inputSourceImpl.primaryButtonIndex].pressed;
 					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed) {
-						this._gamepadInputSources[0].active = true;
+						this._gamepadInputSources[0]._active = true;
 					} else if (!primaryActionPressed && inputSourceImpl.primaryActionPressed) {
-						this.dispatchEvent('@@webxr-polyfill/input-select-end', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
-						this._gamepadInputSources[0].active = false;
+						if (!this._shouldSuppressSelectEvents()) {
+							this.dispatchEvent('@@webxr-polyfill/input-select-end', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
+						}
+						this._gamepadInputSources[0]._active = false;
 					}
 				}
 			}
@@ -5184,7 +5294,7 @@ class ARKitDevice extends XRDevice {
 				const inputSourceImpl = this._gamepadInputSources[i];
 				if (inputSourceImpl.primaryButtonIndex !== -1) {
 					const primaryActionPressed = gamepad.buttons[inputSourceImpl.primaryButtonIndex].pressed;
-					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed) {
+					if (primaryActionPressed && !inputSourceImpl.primaryActionPressed && !this._shouldSuppressSelectEvents()) {
 						this.dispatchEvent('@@webxr-polyfill/input-select-start', { sessionId: session.id, inputSource: inputSourceImpl.inputSource });
 					}
 					inputSourceImpl.primaryActionPressed = primaryActionPressed;
@@ -5259,7 +5369,7 @@ class ARKitDevice extends XRDevice {
 	getInputSources() {
 		const inputSources = [];
 		for (const inputSourceImpl of this._gamepadInputSources) {
-			if (inputSourceImpl.active) {
+			if (inputSourceImpl._active) {
 				inputSources.push(inputSourceImpl.inputSource);
 			}
 		}
@@ -5268,7 +5378,11 @@ class ARKitDevice extends XRDevice {
 	getInputPose(inputSource, coordinateSystem, poseType) {
 		for (let i = 0; i < this._gamepadInputSources.length; i++) {
 			const inputSourceImpl = this._gamepadInputSources[i];
-			if (inputSourceImpl.active && inputSourceImpl.inputSource === inputSource) {
+			if (inputSourceImpl._active && inputSourceImpl.inputSource === inputSource) {
+				const fov = 2.0 * Math.atan(1.0 / this._projectionMatrix[5]);
+				const halfFov = fov * 0.5;
+				const near = this._projectionMatrix[14] / (this._projectionMatrix[10] - 1.0);
+				const aspect = this._projectionMatrix[5] / this._projectionMatrix[0];
 				const deviceWidth = document.documentElement.clientWidth;
 				const deviceHeight = document.documentElement.clientHeight;
 				const clientX = this._touches[i].x;
@@ -5278,10 +5392,10 @@ class ARKitDevice extends XRDevice {
 				const viewMatrixInverse = invert$3(create$5(), this._headModelMatrix);
 				coordinateSystem._transformBasePoseMatrix(viewMatrixInverse, viewMatrixInverse);
 				const matrix = identity$3(create$5());
-				const near = 0.1;
-				const aspect = deviceWidth / deviceHeight;
-				matrix[12] = normalizedX * near * aspect;
-				matrix[13] = normalizedY * near;
+				rotateY$3(matrix, matrix, -normalizedX * halfFov * aspect);
+				rotateX$3(matrix, matrix, normalizedY * halfFov);
+				matrix[12] = normalizedX * Math.tan(halfFov) * near * aspect;
+				matrix[13] = normalizedY * Math.tan(halfFov) * near;
 				matrix[14] = -near;
 				multiply$5(matrix, viewMatrixInverse, matrix);
 				const gamepad = this._gamepads[i];
@@ -5522,6 +5636,12 @@ if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
 			let session = await this._requestSession(mode, xrSessionInit);
 			if (mode === 'immersive-ar') {
 				session[PRIVATE$15]._localSpace = await session.requestReferenceSpace('local');
+			}
+			if (xrSessionInit && xrSessionInit.domOverlay && xrSessionInit.domOverlay.root) {
+				session.domOverlayState = {type: 'screen'};
+				const device = session[PRIVATE$15].device;
+				device.setDomOverlayRoot(xrSessionInit.domOverlay.root);
+				device.setActiveXRSession(session);
 			}
 			return session
 		};
