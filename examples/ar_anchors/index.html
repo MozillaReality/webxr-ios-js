@@ -1,17 +1,16 @@
 <html>
-  <!-- Any copyright is dedicated to the Public Domain.
-			  http://creativecommons.org/publicdomain/zero/1.0/
+	<!-- Any copyright is dedicated to the Public Domain.
+		http://creativecommons.org/publicdomain/zero/1.0/
 	-->
 	<head>
 		<title>AR anchors example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<script src="../libs/three/three.min.js"></script>
-		<script module src="../../xrshim.js"></script>
 		<link rel="stylesheet" href="../common.css"/>
 	</head>
 	<body>
-	    <div id="description">
+		<div id="description">
 			<h2>Anchored Boxes</h2>
 			<p>Anchor boxes to XRAnchors created in front the where the user taps on the screen.</p>
 		</div>
@@ -22,19 +21,11 @@
 			import * as vec3 from '../libs/gl-matrix/vec3.js';
 
 			import XREngine from "../XREngine.js";
-			import XRInputManager from "../XRInputManager.js";
 
 			let session = null;
 			let engine = null;
-			
-			// temporary working variables
-			const workingMatrix1 = mat4.create();
-			const workingMatrix2 = mat4.create();
-			const workingVec3 = vec3.create();
-
-			const upY = vec3.fromValues(0,1,0);
-
-			const coordinatesQueue = [];
+			let inputSource = null;
+			let isSelecting = false;
 
 			// we can save the eyeLevel FOR because in this implementation
 			// it doesn't have state (the head-model FOR does, and shouldn't be cached,
@@ -42,48 +33,49 @@
 			let localReferenceSpace = null;
 			let viewerReferenceSpace = null;
 
-			document.getElementById('go-button').addEventListener('click', event => {
-				if (!session) {
+			// temporary working variables
+			const workingMatrix = mat4.create();
+			const workingVec3 = vec3.create();
+
+			const goButton = document.getElementById('go-button');
+
+			const initXR = () => {
+				if (navigator.xr) {
 					navigator.xr.isSessionSupported('immersive-ar').then(supported => {
 						if (supported) {
-							navigator.xr.requestSession('immersive-ar')
-								.then(handleSessionStarted)
-								.catch(err => {
-									console.error('Session setup error', err)
-								});
-							document.getElementById('go-button').innerText = 'End';
+							goButton.disabled = false;
+							goButton.addEventListener('click', onButtonClick);
 						} else {
-							throw new Error('No immersive-ar support');
+							goButton.initText = 'No WebXR AR support';
 						}
 					});
 				} else {
+					goButton.initText = 'No WebXR support';
+				}
+			};
+
+			const onButtonClick = event => {
+				if (!session) {
+					navigator.xr.requestSession('immersive-ar', {requiredFeatures: ['hit-test']})
+						.then(xrSession => {
+							initSession(xrSession);
+							goButton.innerText = 'End';
+						}).catch(err => {
+							console.error('Session setup error', err);
+						});
+				} else {
 					session.end();
 				}
-			}, true);
+			};
 
-			function onSessionEnded(event) {
-				session = null;
-				document.getElementById('go-button').innerText = 'Go';
-	        }
-
-			// handle input events from the XRInputManager
-			const inputManager = new XRInputManager((eventName, details) => {
-				if (!session) return;
-
-				switch (eventName){
-					case 'normalized-touch':
-						coordinatesQueue.push([details.normalizedCoordinates[0], details.normalizedCoordinates[1]]);
-						break;
-					default:
-						console.error('unknown xr input event', eventName, details);
-						break;
-				}
-			});
-
-			const handleSessionStarted = async xrSession => {
+			const initSession = async xrSession => {
 				session = xrSession;
+				session.addEventListener('end', onSessionEnd);
+				session.addEventListener('select', onSelect);
+				session.addEventListener('inputsourceschange', onInputSourcesChange);
 
-				session.addEventListener('end', onSessionEnded);
+				localReferenceSpace = await session.requestReferenceSpace('local');
+				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
 
 				// Create the context where we will render our 3D scene
 				const canvas = document.createElement('canvas');
@@ -96,23 +88,18 @@
 				// Set up the base layer
 				session.updateRenderState({baseLayer: new XRWebGLLayer(session, context)});
 
-				localReferenceSpace = await session.requestReferenceSpace('local');
-				viewerReferenceSpace = await session.requestReferenceSpace('viewer');
-
 				// Create a simple test scene and renderer
 				// The engine's scene is in the eye-level coordinate system 
 				engine = new XREngine(canvas, context);
 
+				// get the location of the device, and use it to create an
+				// anchor with the identity orientation
 				session.requestAnimationFrame(async (t, frame) => {
-					// get the location of the device, and use it to create an 
-					// anchor with the identity orientation
-					mat4.copy(workingMatrix1, 
-						frame.getPose(localReferenceSpace, 
-									  viewerReferenceSpace).transform.matrix);
-					mat4.getTranslation(workingVec3, workingMatrix1);
-					mat4.fromTranslation(workingMatrix1, workingVec3);
+					mat4.copy(workingMatrix, frame.getPose(localReferenceSpace, viewerReferenceSpace).transform.matrix);
+					mat4.getTranslation(workingVec3, workingMatrix);
+					mat4.fromTranslation(workingMatrix, workingVec3);
 
-					const anchor = await frame.addAnchor(workingMatrix1, localReferenceSpace);
+					const anchor = await frame.addAnchor(workingMatrix, localReferenceSpace);
 					engine.addAnchoredNode(anchor, engine.root);
 
 					// Kick off rendering
@@ -120,32 +107,30 @@
 				});
 
 				// initialize scene
-				engine.addAmbientLight()
-				engine.addDirectionalLight()
 
-				// Add a box and axis at the origin of the eye-level coordinate system
-				// for debugging by uncommenting these lines
-				// engine.addBox([0, 0, 0], [0.025, 0.025, 0.025], 0x44ff44)
-				// engine.addAxesHelper([0,0,0], [0.2,0.2,0.2])				
+				engine.addAmbientLight();
+				engine.addDirectionalLight();
 			};
 
-			const addAnchorInScreenCoordinates = (normalizedX, normalizedY, frame) => {
-				// Convert the screen coordinates into head-model origin/direction for hit testing
-				const [origin, direction] = XRInputManager.convertScreenCoordinatesToRay(
-					normalizedX, normalizedY, engine.camera.projectionMatrix);
+			const onSessionEnd = event => {
+				session = null;
+				inputSource = null;
+				viewerReferenceSpace = null;
+				localReferenceSpace = null;
+				goButton.innerText = 'Go';
+			};
 
-				// set up the local transformation to be positioned relative to the camera along
-				// the ray, but also oriented along the ray direction
-				mat4.targetTo(workingMatrix1, origin, direction, upY);
-				mat4.fromTranslation(workingMatrix2, direction);
-				mat4.multiply(workingMatrix1, workingMatrix2, workingMatrix1);
+			const onInputSourcesChange = event => {
+				if (inputSource && event.removed.includes(inputSource)) {
+					inputSource = null;
+				}
+				if (!inputSource && event.added.length > 0) {
+					inputSource = event.added[0];
+				}
+			};
 
-				// create an anchor in front of the phone
-				frame.addAnchor(workingMatrix1, viewerReferenceSpace).then(anchor => {
-					engine.addAnchoredNode(anchor, createSceneGraphNode());					
-				}).catch(err => {
-					console.error('Error adding anchor', err);
-				});
+			const onSelect = event => {
+				isSelecting = true;
 			};
 
 			// Creates a box used to indicate the location of an anchor offset
@@ -160,7 +145,7 @@
 				const outlineMaterial = new THREE.MeshBasicMaterial({color: 0x00ff00, side: THREE.BackSide});
 				const outlineMesh = new THREE.Mesh(geometry, outlineMaterial);
 
-				mesh.position.set(0, 0.05, 0)
+				mesh.position.set(0, 0.05, 0);
 				outlineMesh.position.set(0, 0.05, 0);
 				outlineMesh.scale.multiplyScalar(1.05);
 
@@ -176,29 +161,38 @@
 
 				session.requestAnimationFrame(handleAnimationFrame);
 
-				for (const coordinates of coordinatesQueue) {
-					addAnchorInScreenCoordinates(coordinates[0], coordinates[1], frame);
-				}
-
-				coordinatesQueue.length = 0;
-
-				const pose = frame.getViewerPose(localReferenceSpace);
-				if (!pose){
+				const viewerPose = frame.getViewerPose(localReferenceSpace);
+				if (!viewerPose){
 					console.log('No pose');
 					return;
 				}
 
+				if (isSelecting && inputSource) {
+					const inputPose = frame.getPose(inputSource.targetRaySpace, localReferenceSpace);
+					vec3.set(workingVec3, 0, 0, -1.0);
+					mat4.fromTranslation(workingMatrix, workingVec3);
+					mat4.multiply(workingMatrix, inputPose.transform.matrix, workingMatrix);
+					frame.addAnchor(workingMatrix, localReferenceSpace).then(anchor => {
+						engine.addAnchoredNode(anchor, createSceneGraphNode());
+					}).catch(err => {
+						console.error('Error adding anchor', err);
+					});
+					isSelecting = false;
+				}
+
 				engine.startFrame();
-				for (const view of pose.views) {
+				for (const view of viewerPose.views) {
 					engine.preRender(
 						session.renderState.baseLayer.getViewport(view),
 						view.projectionMatrix,
 						view.transform.matrix
-					)
+					);
 					engine.render();
 				}
 				engine.endFrame();
-			}
+			};
+
+			initXR();
 		</script>
 	</body>
 </html>

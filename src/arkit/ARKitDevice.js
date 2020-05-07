@@ -444,8 +444,10 @@ export default class ARKitDevice extends XRDevice {
 			oldCanvas.style.backgroundColor = session.canvasBackground
 		}
 
-		session.bodyBackground = document.body.style.backgroundColor;
+		session.bodyBackgroundColor = document.body.style.backgroundColor;
+		session.bodyBackgroundImage = document.body.style.backgroundImage;
 		document.body.style.backgroundColor = "transparent";
+		document.body.style.backgroundImage = "none";
 
 		var children = document.body.children;
 		for (var i = 0; i < children.length; i++) {
@@ -532,7 +534,8 @@ export default class ARKitDevice extends XRDevice {
 				canvas.style.display = session.canvasDisplay;
 				canvas.style.backgroundColor = session.canvasBackground;
 
-				document.body.style.backgroundColor = session.bodyBackground;
+				document.body.style.backgroundColor = session.bodyBackgroundColor;
+				document.body.style.backgroundImage = session.bodyBackgroundImage;
 			}
 	
 			this._wrapperDiv.style.display = "none";
@@ -751,11 +754,16 @@ export default class ARKitDevice extends XRDevice {
 		for (let i = 0; i < this._gamepadInputSources.length; i++) {
 			const inputSourceImpl = this._gamepadInputSources[i];
 			if (inputSourceImpl._active && inputSourceImpl.inputSource === inputSource) {
-				// @TODO: Support Transient input
+				const fov = 2.0 * Math.atan(1.0 / this._projectionMatrix[5]);
+				const halfFov = fov * 0.5;
+				const near = this._projectionMatrix[14] / (this._projectionMatrix[10] - 1.0);
+				const aspect = this._projectionMatrix[5] / this._projectionMatrix[0];
+
 				const deviceWidth = document.documentElement.clientWidth;
 				const deviceHeight = document.documentElement.clientHeight;
 				const clientX = this._touches[i].x;
 				const clientY = this._touches[i].y;
+
 				// convert to -1.0 to 1.0
 				const normalizedX = (clientX / deviceWidth) * 2.0 - 1.0;
 				const normalizedY = -(clientY / deviceHeight) * 2.0 + 1.0;
@@ -764,12 +772,12 @@ export default class ARKitDevice extends XRDevice {
 				// @TODO: Optimize if possible
 				const viewMatrixInverse = mat4.invert(mat4.create(), this._headModelMatrix);
 				coordinateSystem._transformBasePoseMatrix(viewMatrixInverse, viewMatrixInverse);
+
 				const matrix = mat4.identity(mat4.create());
-				// Assuming FOV is 90 degree @TODO: Remove this constraint
-				const near = 0.1; // @TODO: Should be from render state
-				const aspect = deviceWidth / deviceHeight;
-				matrix[12] = normalizedX * near * aspect;
-				matrix[13] = normalizedY * near;
+				mat4.rotateY(matrix, matrix, -normalizedX * halfFov * aspect);
+				mat4.rotateX(matrix, matrix, normalizedY * halfFov);
+				matrix[12] = normalizedX * Math.tan(halfFov) * near * aspect;
+				matrix[13] = normalizedY * Math.tan(halfFov) * near;
 				matrix[14] = -near;
 				mat4.multiply(matrix, viewMatrixInverse, matrix);
 
