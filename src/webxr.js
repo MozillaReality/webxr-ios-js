@@ -6,302 +6,426 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. 
  */
 
-import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill'
-import {PRIVATE} from 'webxr-polyfill/src/api/XRFrameOfReference'
+import WebXRPolyfill from 'webxr-polyfill/src/WebXRPolyfill';
 
-import * as mat4 from 'gl-matrix/src/gl-matrix/mat4'
-import * as vec3 from 'gl-matrix/src/gl-matrix/vec3'
+import XRSystem from 'webxr-polyfill/src/api/XRSystem';
+import XRSession, {PRIVATE as XRSESSION_PRIVATE} from 'webxr-polyfill/src/api/XRSession';
+
+import * as mat4 from 'gl-matrix/src/gl-matrix/mat4';
+import * as vec3 from 'gl-matrix/src/gl-matrix/vec3';
 
 import API from './extensions/index';
 
-import ARKitDevice from './arkit/ARKitDevice'
-import ARKitWrapper from './arkit/ARKitWrapper'
+import ARKitDevice from './arkit/ARKitDevice';
+import ARKitWrapper from './arkit/ARKitWrapper';
 
-import XRHitResult from './extensions/XRHitResult'
+import XRAnchor from './extensions/XRAnchor';
+import XRHitTestResult from './extensions/XRHitTestResult';
+import XRHitTestSource from './extensions/XRHitTestSource';
 
-const _workingMatrix = mat4.create()
-const _workingMatrix2 = mat4.create()
+const _workingMatrix = mat4.create();
+const _workingMatrix2 = mat4.create();
 
 // Monkey patch the WebXR polyfill so that it only loads our special XRDevice
-WebXRPolyfill.prototype._patchRequestDevice = function(){
-	  var _arKitDevice = new ARKitDevice(this.global)
-		this.xr = new XR(new XRDevice(_arKitDevice))
-		this.xr._mozillaXRViewer = true
-    Object.defineProperty(this.global.navigator, 'xr', {
-      value: this.xr,
-      configurable: true,
-    })
-}
+WebXRPolyfill.prototype._patchNavigatorXR = function() {
+	this.xr = new XRSystem(Promise.resolve(new ARKitDevice(this.global)));
+	this.xr._mozillaXRViewer = true;
+	Object.defineProperty(this.global.navigator, 'xr', {
+		value: this.xr,
+		configurable: true,
+	});
+};
 
-let mobileIndex =  navigator.userAgent.indexOf("Mobile/") 
-let isWebXRViewer = navigator.userAgent.indexOf("WebXRViewer") !== -1 ||
-			((navigator.userAgent.indexOf("iPhone") !== -1 ||  navigator.userAgent.indexOf("iPad") !== -1) 
-				&& mobileIndex !== -1 && navigator.userAgent.indexOf("AppleWebKit") !== -1 
-				&& navigator.userAgent.indexOf(" ", mobileIndex) === -1)
+const mobileIndex =  navigator.userAgent.indexOf("Mobile/");
+const isWebXRViewer = navigator.userAgent.indexOf("WebXRViewer") !== -1 ||
+			((navigator.userAgent.indexOf("iPhone") !== -1 || navigator.userAgent.indexOf("iPad") !== -1)
+				&& mobileIndex !== -1 && navigator.userAgent.indexOf("AppleWebKit") !== -1
+				&& navigator.userAgent.indexOf(" ", mobileIndex) === -1);
 
 // Install the polyfill IF AND ONLY IF we're running in the WebXR Viewer
 const xrPolyfill =  !isWebXRViewer ? null : new WebXRPolyfill(null, {
 	webvr: false,
 	cardboard: false
-})
-
-/*
-Now install a few proposed AR extensions to the WebXR Device API:
-- hit-testing: https://github.com/immersive-web/hit-test/
-- anchors: https://github.com/immersive-web/anchors
-*/
-
-// Note from BLAIR:
-// I'm ALMOST POSITIVE this is wrong:  we can't assume frames of reference have
-// transforms, it's just that we are always giving absolute transforms in this patched
-// polyfill, and NOT treating "eye-level" and "head-model" the way they should be.
-// All of this will change when the polyfill is updated to the final spec.
-function _xrFrameOfReferenceGetTransformTo(otherFoR, out){
-	return _getTransformTo(this[PRIVATE].transform, otherFoR[PRIVATE].transform, out)
-}
-
-function _getTransformTo(sourceMatrix, destinationMatrix, out){
-	mat4.invert(_workingMatrix, destinationMatrix)
-	//let out = mat4.identity(mat4.create())
-	//mat4.multiply(out, _workingMatrix, out)
-	return mat4.multiply(out, sourceMatrix, _workingMatrix)
-}
-
-function _updateWorldSensingState (options) {
-	return _arKitWrapper.updateWorldSensingState(options)
-}
-
-function _getWorldInformation () {
-	 return  _arKitWrapper.getWorldInformation()
-}
-
-// This will be XRSession.requestHitTest
-async function _xrSessionRequestHitTest(origin, direction, coordinateSystem) {
-	// Promise<FrozenArray<XRHitResult>> requestHitTest(Float32Array origin, Float32Array direction, XRCoordinateSystem coordinateSystem);
-
-	// ARKit only handles hit testing from the screen, so only head model FoR is accepted
-	if(coordinateSystem.type !== 'head-model'){
-		return Promise.reject('Only head-model hit testing is supported')
-	}
-
-	if(origin[0] != 0.0 && origin[1] != 0.0 && origin[2] != 0.0) {
-		return Promise.reject('Platform only supports hit testing with ray origin = [0,0,0]')
-	}
-
-	return new Promise((resolve, reject) => {
-		const normalizedScreenCoordinates = _convertRayToARKitScreenCoordinates(direction, _arKitWrapper._projectionMatrix)
-
-		//console.log('and back', ...normalizedScreenCoordinates)
-
-		// Perform the hit test
-		_arKitWrapper.hitTest(...normalizedScreenCoordinates, ARKitWrapper.HIT_TEST_TYPE_EXISTING_PLANE_USING_GEOMETRY).then(hits => {
-			if(hits.length === 0) resolve([])
-			// Hit results are in the tracker (aka eye-level) coordinate system, so transform them back to head-model since the passed origin and results must be in the same coordinate system
-
-			// uncomment if you want one hit, and get rid of map below
-			// const hit = _arKitWrapper.pickBestHit(hits)
-
-			this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
-				eyeLevelFrameOfReference.getTransformTo(coordinateSystem, _workingMatrix)
-				//console.log('eye to head', mat4.getTranslation(vec3.create(), csTransform), mat4.getRotation(new Float32Array(4), csTransform))
-				resolve(hits.map(hit => {
-					mat4.multiply(_workingMatrix2, _workingMatrix, hit.world_transform)
-					//console.log('world transform', mat4.getTranslation(vec3.create(), hit.world_transform), mat4.getRotation(new Float32Array(4), hit.world_transform))
-					//console.log('head transform', mat4.getTranslation(vec3.create(), hitInHeadMatrix), mat4.getRotation(new Float32Array(4), hitInHeadMatrix))
-					return new XRHitResult(_workingMatrix2, hit, _arKitWrapper._timestamp)
-				}))
-			}).catch((...params) => {
-				console.error('Error testing for hits', ...params)
-				reject()
-			})
-		}).catch((...params) => {
-			console.error('Error testing for hits', ...params)
-			reject()
-		})
-	})
-}
-
-async function /*  Promise<XRAnchor> */ _addAnchor(value, frameOfReference) {
-	// value is either
-	//  	Float32Array modelMatrix, 
-	//		XRHitResult hitResult
-	// XRFrameOfReference frameOfReference
-	  if (value instanceof XRHitResult) {
-			return _arKitWrapper.createAnchorFromHit(value._hit)
-			// const hit = value._hit;
-			// // if it's a plane
-			// if (hit.anchor_transform) {
-			// 	// Use the first hit to create an XRAnchorOffset, creating the ARKit XRAnchor as necessary
-
-			// 	let anchor = this._getAnchor(hit.uuid)
-			// 	if(anchor === null){
-			// 		anchor = new XRAnchor(hit.anchor_transform, hit.uuid)
-			// 		this._setAnchor(anchor)
-			// 	}
-
-			// 	const offsetPosition = [
-			// 		hit.world_transform[12] - hit.anchor_transform[12],
-			// 		hit.world_transform[13] - hit.anchor_transform[13],
-			// 		hit.world_transform[14] - hit.anchor_transform[14]
-			// 	]
-			// 	const worldRotation = quat.fromMat3(quat.create(), mat3.fromMat4(mat3.create(), hit.world_transform))
-			// 	const q = quat.create();
-			// 	const inverseAnchorRotation = quat.invert(q, quat.fromMat3(q, mat3.fromMat4(mat3.create(), hit.anchor_transform)))
-			// 	const offsetRotation = quat.multiply(q, worldRotation, inverseAnchorRotation)
-			// 	const offset = mat4.fromRotationTranslation(mat4.create(), offsetRotation, offsetPosition)
-			// 	const anchorOffset = new XRAnchorOffset(anchor, offset)
-			// 	return anchorOffset
-			// } else {
-			// 	const anchor = new XRAnchor(hit.world_transform, hit.uuid)
-			// 	this._setAnchor(anchor)
-			// 	return anchor
-			// }
-
-		} else if (value instanceof Float32Array) {
-			return new Promise((resolve, reject) => {
-				// need to get the data in eye-level reference frame.  In this polyfill,
-				// 
-				this.requestFrameOfReference('eye-level').then(eyeLevelFrameOfReference => {
-					frameOfReference.getTransformTo(eyeLevelFrameOfReference, _workingMatrix)
-					const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value)
-
-					_arKitWrapper.createAnchor(anchorInWorldMatrix).then(anchor => {
-						resolve(anchor)
-
-					// var anchor = new XRAnchor(anchorInWorldMatrix)
-					// _arKitWrapper.addAnchor(anchor.uid, anchor.modelMatrix()).then(detail => { 
-					// 	anchor.modelMatrix = detail.transform
-					// 	this._setAnchor(anchor)
-					// 	resolve(anchor)
-					}).catch((...params) => {
-						console.error('could not create anchor', ...params)
-						reject()
-					})
-				}).catch((...params) => {
-					console.error('could not create eye-level frame of reference', ...params)
-					reject()
-				})
-			});
-		}	else {
-			return Promise.reject('invalid value passed to addAnchor', value)	
-		}
-}
-
-async function /*Promise<XRAnchor>*/ _removeAnchor(anchor) {
-	return new Promise((resolve, reject) => {
-		_arKitWrapper.removeAnchor(anchor);
-		resolve();
-	})
-}
-
-
-/************************** 
- * iOS specific things, not sure where to put these yet
-*/
-
-function _setNumberOfTrackedImages (count) {
-	return _arKitWrapper.setNumberOfTrackedImages(count)
-}
-
-function _createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
-	return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters)
-}
-
-function _destroyDetectionImage(uid) {
-	return _arKitWrapper.createDetectionImage(uid)
-}
-
-function _activateDetectionImage(uid) {
-	return  _arKitWrapper.activateDetectionImage(uid)
-}
-
-function _deactivateDetectionImage(uid) {
-	return  _arKitWrapper.deactivateDetectionImage(uid)
-}
-
-function _getWorldMap() {
-	return _arKitWrapper.getWorldMap()
-}
-
-function _setWorldMap(worldMap) {
-	return _arKitWrapper.setWorldMap(worldMap)
-}
-
-function _getWorldMappingStatus() {
-	return _arKitWrapper._worldMappingStatus;
-}
-
-// function _getAnchor(uid) {
-// 	if (!this._anchors) { return null}
-// 	return this._anchors.get(uid) || null
-// }
-
-// function _setAnchor(anchor) {
-// 	if (!this._anchors) { this._anchors = new Map()	}
-// 	this._anchors.set(anchor.uid, anchor)
-// }
-
-// function _deleteAnchor(anchor){
-// 	if (!this._anchors) { return }
-// 	this._anchors.delete(anchor.uid)
-// }
+});
 
 /**
-Take a vec3 direction vector through the screen and return normalized x,y screen coordinates
-@param ray {vec3}
-@param projectionMatrix {mat4}
-@return [x,y] in range [0,1]
-*/
-function _convertRayToARKitScreenCoordinates(ray, projectionMatrix){
-	var proj = vec3.transformMat4(vec3.create(), ray, projectionMatrix)
-	//console.log('project', ...proj)
+ * Take a vec3 direction vector through the screen and return normalized x,y screen coordinates
+ * @param ray {vec3}
+ * @param projectionMatrix {mat4}
+ * @return [x,y] in range [0,1]
+ */
+const _convertRayToARKitScreenCoordinates = (ray, projectionMatrix) => {
+	const proj = vec3.transformMat4(vec3.create(), ray, projectionMatrix);
+//	console.log('project', ...proj);
 
-	let x = (proj[0] + 1)/2;
-	let y = (-proj[1] + 1)/2;
+	const x = (proj[0] + 1) / 2;
+	const y = (-proj[1] + 1) / 2;
 
-	return [x, y]
-}
+//	console.log('result', x, y);
+	return [x, y];
+};
 
-var _arKitWrapper = null
+let _arKitWrapper = null;
 
-function _installExtensions(){
-	if(!navigator.xr) return
+// Install a few proposed AR extensions to the WebXR Device API
+// by adding the methods to XR*.prototype.
+// ARKitWrapper talks to Apple ARKit and instanciates XR resources
+// so that the extended WebXR API for AR basically just calls ARKitWrapper methods.
 
-	// install our ARKitWrapper
-	_arKitWrapper = ARKitWrapper.GetOrCreate()
+// Anchors
+// Specification: https://github.com/immersive-web/anchors
 
-	ARKitDevice.initStyles()
+const installAnchorsExtension = () => {
+	if (window.XRFrame === undefined) { return; }
 
-	if(window.XRSession){
-		XRSession.prototype.requestHitTest = _xrSessionRequestHitTest
-		XRSession.prototype.updateWorldSensingState = _updateWorldSensingState
-		XRSession.prototype.addAnchor = _addAnchor
-		// XRSession.prototype._setAnchor = _setAnchor
-		// XRSession.prototype._getAnchor = _getAnchor
-		// XRSession.prototype._deleteAnchor = _deleteAnchor
-		XRSession.prototype.removeAnchor = _removeAnchor
+	/**
+	 * @param value {XRHitResult|Float32Array}
+	 * @param referenceSpace {XRReferenceSpace}
+	 * @return {Promise<XRAnchor>}
+	 */
+	XRFrame.prototype.addAnchor = async function addAnchor(value, referenceSpace) {
+		if (!this.session[XRSESSION_PRIVATE].immersive) {
+			return Promise.reject(); 
+		}
 
+		const workingMatrix1 = mat4.create();
 
-		// use "nonStandard" to signify these are unlikely to be standardized 
-		XRSession.prototype.nonStandard_createDetectionImage = _createDetectionImage
-		XRSession.prototype.nonStandard_destroyDetectionImage = _destroyDetectionImage
-		XRSession.prototype.nonStandard_activateDetectionImage = _activateDetectionImage
-		XRSession.prototype.nonStandard_deactivateDetectionImage = _deactivateDetectionImage
-		XRSession.prototype.nonStandard_setNumberOfTrackedImages = _setNumberOfTrackedImages
-		XRSession.prototype.nonStandard_getWorldMap = _getWorldMap
-		XRSession.prototype.nonStandard_setWorldMap = _setWorldMap
-		XRSession.prototype.nonStandard_getWorldMappingStatus = _getWorldMappingStatus
-	}
+		// @TODO: Replace XRHitResult with XRHitTestResult if needed
+		/*
+		if (value instanceof XRHitResult) {
+			// let tempAnchor = await _arKitWrapper.createAnchorFromHit(value._hit);
+			// value = tempAnchor.modelMatrix
+
+			mat4.multiply(workingMatrix1, value._hit.anchor_transform, value._hit.local_transform)
+			value = workingMatrix1
+		} 
+		*/
+		if (value instanceof Float32Array) {
+			return new Promise((resolve, reject) => {
+				// we assume that the eye-level reference frame (local reference space)
+				// was obtained during requestSession below in this polyfill. 
+				// needs to be done so that this method doesn't actually need to 
+				// be async and wait
+
+				let localReferenceSpace = this.session[XRSESSION_PRIVATE]._localSpace;
+				mat4.copy(_workingMatrix, this.getPose(localReferenceSpace, referenceSpace).transform.matrix);
+				const anchorInWorldMatrix = mat4.multiply(mat4.create(), _workingMatrix, value);
+				_arKitWrapper.createAnchor(anchorInWorldMatrix)
+					.then(resolve)
+					.catch((...params) => {
+						console.error('could not create anchor', ...params);
+						reject();
+					});
+			});
+		} else {
+			return Promise.reject('invalid value passed to addAnchor ' + value);
+		}
+	};
+
+	/**
+	 * Note: Defining detach() method here, not in XRAnchor.js, so far because
+	 *       I'm not sure if XRAnchor.js should have a dependency with _arKitWrapper.
+	 *
+	 * Note: Currently (10/29/2019) the explainer doesn't describe the return type
+	 *       from detach(). So returning Promise<void> so far.
+	 * @return {Promise<void>}
+	 */
+	XRAnchor.prototype.detach = async function removeAnchor() {
+		return new Promise((resolve, reject) => {
+			_arKitWrapper.removeAnchor(this);
+			resolve();
+		});
+	};
+
+	// @TODO: Support update event
+};
+
+// Hit-Testing
+// Specification: https://github.com/immersive-web/hit-test/
+
+const installHitTestingExtension = () => {
+	if (window.XRSession === undefined) { return };
+
+	// Hit test API
+
+	XRSession.prototype.requestHitTestSource = function requestHitTestSource(options = {}) {
+		const source = new XRHitTestSource(this, options);
+		const device = this[XRSESSION_PRIVATE].device;
+		device.addHitTestSource(source);
+		return Promise.resolve(source);
+	};
+
+	XRSession.prototype.requestHitTestSourceForTransientInput = function requestHitTestSourceForTransientInput() {
+		throw new Error('requestHitTestSourceForTransientInput() is not supported yet.');
+	};
+
+	XRFrame.prototype.getHitTestResults = function getHitTestResults(hitTestSource) {
+		const device = this.session[XRSESSION_PRIVATE].device;
+		const transforms = device.getHitTestResults(hitTestSource);
+		const results = [];
+		for (const transform of transforms) {
+			results.push(new XRHitTestResult(this, transform));
+		}
+		return results;
+	};
+
+	XRFrame.prototype.geetTransientInputHitTestResult = function geetTransientInputHitTestResult() {
+		throw new Error('geetTransientInputHitTestResult() is not supported yet.');
+	};
+};
+
+// Real World Geometry
+// Specification: https://github.com/immersive-web/real-world-geometry
+
+const installRealWorldGeometryExtension = () => {
+	if (window.XRFrame === undefined || window.XRSession === undefined) { return; }
+
+	/**
+	 *
+	 */
+	Object.defineProperty(XRFrame.prototype, 'worldInformation', {
+		get: function getWorldInformation() {
+			if (!this.session[XRSESSION_PRIVATE].immersive) {
+				throw new Error('Not implemented');
+			}	
 	
-	if(window.XRFrame) {
-		Object.defineProperty(XRFrame.prototype, 'worldInformation', { get: _getWorldInformation });
-	}
-	if(window.XRFrameOfReference){
-		XRFrameOfReference.prototype.getTransformTo = _xrFrameOfReferenceGetTransformTo
+			return  _arKitWrapper.getWorldInformation();
+		}
+	});
+
+	/**
+	 * Note: The name in the newest explainer(10/18/2019) seems updateWorldTrackingState.
+	 * @TODO: Rename if needed.
+	 *
+	 * @param options {Object}
+	 * @return
+	 */
+	XRSession.prototype.updateWorldSensingState = function UpdateWorldSensingState(options) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}	
+
+		return _arKitWrapper.updateWorldSensingState(options);
+	};
+};
+
+// Lighting Estimation
+// Specification: https://github.com/immersive-web/lighting-estimation
+
+const installLightingEstimationExtension = () => {
+	if (window.XRFrame === undefined) { return; }
+
+	/*
+	 * @return {XRLightProbe}
+	 */
+	XRFrame.prototype.getGlobalLightEstimate = function () {
+		if (!this.session[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}	
+
+		return _arKitWrapper.getLightProbe();
+	};
+
+	// @TODO: Implement
+	XRFrame.prototype.getGlobalReflectionProbe = function () {
+		throw new Error('Not implemented');
+	};
+};
+
+// iOS specific things. No WebXR API extension proposal yet
+// so adding as XRSession.prototype.nonstandard_* for now.
+
+const installNonstandardExtension = () => {
+	if (window.XRSession === undefined) { return; }
+
+	/**
+	 * @param
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_setNumberOfTrackedImages = function setNumberOfTrackedImages(count) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+
+		return _arKitWrapper.setNumberOfTrackedImages(count);
+	};
+
+	/**
+	 * @param
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_createDetectionImage = function createDetectionImage(uid, buffer, width, height, physicalWidthInMeters) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return _arKitWrapper.createDetectionImage(uid, buffer, width, height, physicalWidthInMeters);
+	};
+
+	/**
+	 * @param
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_destroyDetectionImage = function destroyDetectionImage(uid) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return _arKitWrapper.createDetectionImage(uid);
+	};
+
+	/**
+	 * @param
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_activateDetectionImage = function activateDetectionImage(uid) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return  _arKitWrapper.activateDetectionImage(uid);
+	};
+
+	/**
+	 * @param
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_deactivateDetectionImage = function deactivateDetectionImage(uid) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return  _arKitWrapper.deactivateDetectionImage(uid);
+	};
+
+	/**
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_getWorldMap = function getWorldMap() {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return _arKitWrapper.getWorldMap();
+	};
+
+	/**
+	 * @param
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_setWorldMap = function setWorldMap(worldMap) {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return _arKitWrapper.setWorldMap(worldMap);
+	};
+
+	/**
+	 * @return
+	 */
+	XRSession.prototype.nonStandard_getWorldMappingStatus = function getWorldMappingStatus() {
+		if (!this[XRSESSION_PRIVATE].immersive) {
+			throw new Error('Not implemented');
+		}
+		return _arKitWrapper._worldMappingStatus;
+	};
+};
+
+if (xrPolyfill && xrPolyfill.injected && navigator.xr) {
+	// install our ARKitWrapper
+	_arKitWrapper = ARKitWrapper.GetOrCreate();
+
+	ARKitDevice.initStyles();
+
+	// Some workarounds to let the official WebXR polyfill work with our polyfill
+
+	if(window.XRSystem) {
+		// Note: The polyfill supports only immersive-ar mode for now.
+		//       See https://github.com/MozillaReality/webxr-ios-js/pull/34#discussion_r334910337
+		//       The official WebXR polyfill always accepts inline mode
+		//       so overriding XRSystem.isSessionSupported and XRSystem.requestSession to refuse inline mode.
+		// @TODO: Support inline mode. WebXR API specification defines that any XR Device must
+		//        support inline mode 
+		XRSystem.prototype._isSessionSupported = XRSystem.prototype.isSessionSupported;
+		XRSystem.prototype._requestSession = XRSystem.prototype.requestSession;
+		XRSystem.prototype.isSessionSupported = function (mode) {
+			if (!(mode === 'immersive-ar' || mode === 'inline')) return Promise.resolve(false);
+			return this._isSessionSupported(mode);
+		};
+		XRSystem.prototype.requestSession = async function (mode, xrSessionInit) {
+			if (!(mode === 'immersive-ar' || mode === 'inline')) {
+				throw new DOMException('Polyfill Error: only immersive-ar or inline mode is supported.'); 
+			}
+
+			let session = await this._requestSession(mode, xrSessionInit)
+			if (mode === 'immersive-ar') {
+				session[XRSESSION_PRIVATE]._localSpace = await session.requestReferenceSpace('local')
+			}
+
+			// DOM overlay API
+			if (xrSessionInit && xrSessionInit.domOverlay && xrSessionInit.domOverlay.root) {
+				session.domOverlayState = {type: 'screen'};
+				const device = session[XRSESSION_PRIVATE].device;
+				device.setDomOverlayRoot(xrSessionInit.domOverlay.root);
+				device.setActiveXRSession(session);
+			}
+			return session
+		};
 	}
 
-	// inject Polyfill globals {
-	// Apply classes as globals
+	// if(window.XRFrame) {
+		// // Note: The official WebXR polyfill doesn't support XRFrame.getPose() for
+		// //       non target-ray/grip space yet (09/24/2019).
+		// //       We need working .getPose() so supporting by ourselves here for now.
+		// XRFrame.prototype._getPose = window.XRFrame.prototype.getPose;
+		// XRFrame.prototype.getPose = function (space, baseSpace) {
+		// 	if (space._specialType === 'target-ray' || space._specialType === 'grip') {
+		// 		return this._getPose(space, baseSpace);
+		// 	}
+
+		// 	// @TODO: More proper handling
+		// 	//   - Error handling
+		// 	//   - Support XRSpace. Assuming the both spaces are XRReferenceSpace for now
+		// 	//   - Check whether poses must be limited. Assuming it's false for now
+		// 	//   - Support emulatedPosition true case. Assuming it's false for now
+		// 	// See https://immersive-web.github.io/webxr/#populate-the-pose
+
+		// 	const baseSpaceViewerPose = this.getViewerPose(baseSpace);
+
+		// 	if (!baseSpaceViewerPose) {
+		// 		return null;
+		// 	}
+
+		// 	// Note: Currently (10/10/2019) the official WebXR polyfill
+		// 	//       always returns the same XRViewerPose instance from
+		// 	//       .getViewerPose() of a XRFrame instance.
+		// 	//       So we need to copy the matrix before calling the next
+		// 	//       .getViewerPose().
+		// 	//       See https://github.com/immersive-web/webxr-polyfill/issues/97
+
+		// 	mat4.copy(_workingMatrix, baseSpaceViewerPose.transform.matrix);
+
+		// 	const spaceViewerPose = this.getViewerPose(space);
+
+		// 	if (!spaceViewerPose) {
+		// 		return null;
+		// 	}
+
+		// 	mat4.invert(_workingMatrix2, spaceViewerPose.transform.matrix);
+
+		// 	const resultMatrix = mat4.multiply(mat4.create(), _workingMatrix, _workingMatrix2);
+
+		// 	return new XRPose(
+		// 		new XRRigidTransform(resultMatrix),
+		// 		false
+		// 	);
+		// }
+	// }
+
+	// Now install a few proposed AR extensions to WebXR Device API.
+
+	installAnchorsExtension();
+	installHitTestingExtension();
+	installRealWorldGeometryExtension();
+	installLightingEstimationExtension();
+	installNonstandardExtension();
+
+	// Inject Polyfill globals. Apply classes as globals.
 	for (const className of Object.keys(API)) {
 		if (window[className] !== undefined) {
 			console.warn(`${className} already defined on global.`);
@@ -309,9 +433,4 @@ function _installExtensions(){
 			window[className] = API[className];
 		}
 	}
-
-}
-
-if (xrPolyfill && xrPolyfill.injected) {
-	_installExtensions()
 }

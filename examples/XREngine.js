@@ -73,7 +73,7 @@ export default class XREngine {
 		}
 
 		this._renderer.setSize(this._glCanvas.offsetWidth, this._glCanvas.offsetHeight, false)
-		this._renderer.setViewport(viewport.x, viewport.y, viewport.width, viewport.height)
+		this._renderer.setViewport(viewport.x / window.devicePixelRatio, viewport.y / window.devicePixelRatio, viewport.width / window.devicePixelRatio, viewport.height / window.devicePixelRatio)
 	}
 	render() {
 		this._renderer.clearDepth()
