@@ -2668,6 +2668,7 @@ class XRFaceMesh extends XRMesh {
         for (let i = 0; i < blendShapeNames.length; i++) {
             let j = blendShapeNames[i];
             var a0 = this._blendShapes[j];
+            if (a0 === undefined) a0 = 0;
             var b0 = blendShapeArray[i];
             if (Math.abs(a0 - b0) > EPSILON$1) {
                 this._blendShapesChanged = true;
