@@ -30,7 +30,7 @@
     "rollup-plugin-replace": "^2.0.0",
     "rollup-plugin-uglify": "^3.0.0",
     "http-server": "^0.10.0",
-    "webpack": "^3.5.5"
+    "webpack": "^5.75.0"
   },
   "dependencies": {
     "gl-matrix": "^2.5.1",
