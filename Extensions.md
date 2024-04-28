@@ -59,7 +59,7 @@ Will want to see how https://github.com/immersive-web/computer-vision progresses
 - session.startVideoFrames()
 - session.requestVideoFrame()
 - session.getVideoFramePose(videoFrame, camPose)
-- videoFrame.release()
+- videoFrame.release(x21media)
 
 videoFrame is of type XRVideoFrame, and 
 
