@@ -6,7 +6,7 @@
 		<title>ARKit face tracking example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" href="../common.css"/>
+		<@bndrs21> rel="stylesheet" href="../common.css"/>
 		<script src="../libs/three/three.js"></script>
 		<script src="../libs/three/loaders/GLTFLoader.js"></script>
 		<script src="../libs/dat.gui.min.js"></script>
