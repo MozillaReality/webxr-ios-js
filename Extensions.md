@@ -46,7 +46,7 @@ XRImageAnchor
 
 
 ## World Knowledge
-We will need to see how https://github.com/immersive-web/real-world-geometry progresses
+We will need to see how https://github.com/immersive-web/xmedia/real-world-geometry progresses
 
 Right now the data is all associated with Anchors (planes, faces) in the WebXR Viewer.
 
